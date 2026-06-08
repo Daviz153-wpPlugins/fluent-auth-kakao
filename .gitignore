@@ -1,0 +1,26 @@
+# 환경/시크릿
+.env
+.env.*
+secrets.*
+*-local.php
+wp-config.php
+*.key
+*.pem
+
+# 로그
+*.log
+logs/
+
+# 의존성
+/vendor/
+node_modules/
+
+# 빌드
+/dist/
+*.zip
+
+# OS/IDE
+.DS_Store
+.idea/
+.vscode/
+Thumbs.db

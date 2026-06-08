@@ -1,9 +1,11 @@
 <?php
 /**
  * Plugin Name: Fluent Auth Kakao
+ * Plugin URI:  https://github.com/Daviz153-wpPlugins/fluent-auth-kakao
  * Description: FluentAuth에 카카오 로그인을 추가하는 애드온
  * Version:     0.1.0
  * Author:      Daviz153
+ * License:     GPL-2.0-or-later
  * Requires PHP: 8.2
  * Text Domain: fluent-auth-kakao
  */
@@ -14,6 +16,17 @@ define('FAK_VERSION', '0.1.0');
 define('FAK_FILE',    __FILE__);
 define('FAK_DIR',     plugin_dir_path(__FILE__));
 define('FAK_URL',     plugin_dir_url(__FILE__));
+
+// GitHub 자동 업데이트
+if (file_exists(FAK_DIR . 'includes/plugin-update-checker/plugin-update-checker.php')) {
+    require_once FAK_DIR . 'includes/plugin-update-checker/plugin-update-checker.php';
+    $fakUpdater = YahnisElsts\PluginUpdateChecker\v5\PucFactory::buildUpdateChecker(
+        'https://github.com/Daviz153-wpPlugins/fluent-auth-kakao/',
+        __FILE__,
+        'fluent-auth-kakao'
+    );
+    $fakUpdater->getVcsApi()->enableReleaseAssets();
+}
 
 add_action('plugins_loaded', function () {
     if (!defined('FLUENT_AUTH_VERSION')) {

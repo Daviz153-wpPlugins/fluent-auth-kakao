@@ -9,6 +9,14 @@ class KakaoHandler {
 
     private const STATE_KEY = 'fak_oauth_state';
 
+    private const ERROR_MESSAGES = [
+        'csrf_fail'     => '보안 검증에 실패했습니다. 다시 시도해주세요.',
+        'token_fail'    => '카카오 인증에 실패했습니다. 다시 시도해주세요.',
+        'userinfo_fail' => '카카오 사용자 정보를 가져올 수 없습니다. 다시 시도해주세요.',
+        'compat_fail'   => 'FluentAuth 버전이 호환되지 않습니다. 플러그인을 업데이트해주세요.',
+        'auth_fail'     => '로그인 처리 중 오류가 발생했습니다. 다시 시도해주세요.',
+    ];
+
     public function register(): void {
         add_action('login_init',   [$this, 'handleLoginInit']);
         add_action('login_form',   [$this, 'renderButton']);
@@ -49,12 +57,12 @@ class KakaoHandler {
         // 쿠키 바인딩 검증 (공격자 code+state를 피해자에게 전달하는 CSRF 차단)
         $cookieState = sanitize_text_field($_COOKIE[self::STATE_KEY] ?? '');
         if (!$cookieState || !hash_equals($cookieState, $state)) {
-            $this->loginError('보안 검증에 실패했습니다. 다시 시도해주세요.');
+            $this->loginError('csrf_fail');
         }
 
         $transientKey = self::STATE_KEY . '_' . $state;
         if (!get_transient($transientKey)) {
-            $this->loginError('보안 검증에 실패했습니다. 다시 시도해주세요.');
+            $this->loginError('csrf_fail');
         }
         delete_transient($transientKey);
         setcookie(self::STATE_KEY, '', time() - 3600, COOKIEPATH, COOKIE_DOMAIN, is_ssl(), true);
@@ -67,16 +75,16 @@ class KakaoHandler {
 
         $tokenData = $kakao->getToken($code);
         if (is_wp_error($tokenData)) {
-            $this->loginError($tokenData->get_error_message());
+            $this->loginError('token_fail');
         }
 
         $userInfo = $kakao->getUserInfo($tokenData['access_token']);
         if (is_wp_error($userInfo)) {
-            $this->loginError($userInfo->get_error_message());
+            $this->loginError('userinfo_fail');
         }
 
         if (!method_exists(AuthService::class, 'doUserAuth')) {
-            $this->loginError('FluentAuth 버전이 호환되지 않습니다. 플러그인을 업데이트해주세요.');
+            $this->loginError('compat_fail');
         }
 
         // 1) 카카오 ID로 먼저 조회 — 가장 신뢰도 높음
@@ -109,7 +117,7 @@ class KakaoHandler {
         remove_filter('fluent_auth/signup_enabled', '__return_true');
 
         if (is_wp_error($result)) {
-            $this->loginError($result->get_error_message());
+            $this->loginError('auth_fail');
         }
 
         update_user_meta($result->ID, 'fak_kakao_id', $userInfo['id']);
@@ -161,17 +169,18 @@ class KakaoHandler {
     }
 
     public function addLoginError(\WP_Error $errors): \WP_Error {
-        if (isset($_GET['login'], $_GET['fak_message']) && $_GET['login'] === 'kakao_error') {
-            $message = sanitize_text_field(rawurldecode($_GET['fak_message']));
-            $errors->add('kakao_error', esc_html($message));
+        if (isset($_GET['login'], $_GET['fak_error']) && $_GET['login'] === 'kakao_error') {
+            $code    = sanitize_key($_GET['fak_error']);
+            $message = self::ERROR_MESSAGES[$code] ?? '카카오 로그인 중 오류가 발생했습니다. 다시 시도해주세요.';
+            $errors->add('kakao_error', $message);
         }
         return $errors;
     }
 
-    private function loginError(string $message): never {
+    private function loginError(string $code): never {
         wp_redirect(add_query_arg([
-            'login'       => 'kakao_error',
-            'fak_message' => rawurlencode($message),
+            'login'     => 'kakao_error',
+            'fak_error' => $code,
         ], wp_login_url()));
         exit;
     }

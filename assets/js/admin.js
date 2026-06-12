@@ -8,7 +8,7 @@
     var loaded      = false;
 
     fetch(REST_URL, { headers: { 'X-WP-Nonce': NONCE } })
-        .then(function (r) { return r.json(); })
+        .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
         .then(function (data) {
             settings = data;
             loaded   = true;
@@ -46,9 +46,7 @@
                 '</div>' +
                 '<div style="margin-bottom:14px;color:#909399;font-size:13px;">' +
                     '리다이렉트 URI:&nbsp;' +
-                    '<code style="background:#fff;border:1px solid #e4e7ed;padding:2px 6px;border-radius:3px;">' +
-                        REDIRECT_URI +
-                    '</code>' +
+                    '<code id="fak-redirect-uri" style="background:#fff;border:1px solid #e4e7ed;padding:2px 6px;border-radius:3px;"></code>' +
                 '</div>' +
                 '<div>' +
                     '<button id="fak-save-btn" type="button"' +
@@ -89,10 +87,9 @@
         if (!toggle || toggle.dataset.bound) return;
         toggle.dataset.bound = '1';
 
-        var on = !!settings.rest_api_key;
         toggle.addEventListener('click', function () {
-            on = !on;
-            setToggle(on);
+            var isOn = document.getElementById('fak-fields').style.display !== 'none';
+            setToggle(!isOn);
         });
 
         btn.addEventListener('click', function () {
@@ -106,12 +103,11 @@
                 headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': NONCE },
                 body:    JSON.stringify({ rest_api_key: apiKey, client_secret: secret }),
             })
-            .then(function (r) { return r.json(); })
+            .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function (data) {
                 settings.rest_api_key  = apiKey;
                 settings.client_secret = secret;
-                on = !!apiKey;
-                setToggle(on);
+                setToggle(!!apiKey);
                 msg.textContent    = data.message || '저장됨';
                 msg.style.color    = '#67c23a';
                 msg.style.display  = 'inline';
@@ -138,6 +134,9 @@
         var last = socialCards[socialCards.length - 1];
         var card = buildCard();
         last.parentNode.insertBefore(card, last.nextSibling);
+
+        var redirectEl = card.querySelector('#fak-redirect-uri');
+        if (redirectEl) redirectEl.textContent = REDIRECT_URI;
 
         populateCard();
         bindEvents();

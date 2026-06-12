@@ -65,11 +65,14 @@ class KakaoHandler {
             $this->loginError('FluentAuth 버전이 호환되지 않습니다. 플러그인을 업데이트해주세요.');
         }
 
+        // 사이트 가입 허용 여부와 관계없이 카카오 로그인은 계정 생성 허용
+        add_filter('fluent_auth/signup_enabled', '__return_true');
         $result = AuthService::doUserAuth([
             'email'      => $userInfo['email'],
             'first_name' => $userInfo['nickname'],
             'username'   => 'kakao_' . $userInfo['id'],
         ], 'kakao');
+        remove_filter('fluent_auth/signup_enabled', '__return_true');
 
         if (is_wp_error($result)) {
             $this->loginError($result->get_error_message());
@@ -82,8 +85,8 @@ class KakaoHandler {
         }
 
         $redirectTo = sanitize_url($_REQUEST['redirect_to'] ?? '');
-        $redirect   = apply_filters('login_redirect', home_url(), $redirectTo, $result);
-        wp_redirect($redirect);
+        $redirect   = apply_filters('login_redirect', $redirectTo ?: admin_url(), $redirectTo, $result);
+        wp_safe_redirect($redirect);
         exit;
     }
 

@@ -55,9 +55,13 @@ class KakaoAuth {
 
         if (is_wp_error($response)) return $response;
 
-        $data = json_decode(wp_remote_retrieve_body($response), true);
+        $status = wp_remote_retrieve_response_code($response);
+        $data   = json_decode(wp_remote_retrieve_body($response), true);
+        if (!is_array($data)) {
+            return new \WP_Error('kakao_token_parse', '토큰 응답 파싱 실패 (HTTP ' . $status . ')');
+        }
         if (empty($data['access_token'])) {
-            return new \WP_Error('kakao_token_error', $data['error_description'] ?? '토큰 발급 실패');
+            return new \WP_Error('kakao_token_error', $data['error_description'] ?? '토큰 발급 실패 (HTTP ' . $status . ')');
         }
         return $data;
     }
@@ -73,9 +77,10 @@ class KakaoAuth {
 
         if (is_wp_error($response)) return $response;
 
-        $data = json_decode(wp_remote_retrieve_body($response), true);
-        if (empty($data['id'])) {
-            return new \WP_Error('kakao_user_error', '사용자 정보 조회 실패');
+        $status = wp_remote_retrieve_response_code($response);
+        $data   = json_decode(wp_remote_retrieve_body($response), true);
+        if (!is_array($data) || empty($data['id'])) {
+            return new \WP_Error('kakao_user_error', '사용자 정보 조회 실패 (HTTP ' . $status . ')');
         }
 
         $account  = $data['kakao_account'] ?? [];

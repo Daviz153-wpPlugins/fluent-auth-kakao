@@ -220,7 +220,10 @@ class KakaoHandler {
         if (($settings['hide_email_login'] ?? '') !== 'yes') return;
         ?>
         <style>
+            /* WordPress 6.x: p.login-username → <p>(no class), p.login-password → div.user-pass-wrap */
+            #loginform p:has(#user_login),
             #loginform p.login-username,
+            #loginform .user-pass-wrap,
             #loginform p.login-password,
             #loginform .forgetmenot,
             #loginform p.submit,

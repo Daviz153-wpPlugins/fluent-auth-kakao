@@ -136,6 +136,7 @@
                 settings.client_secret   = secret;
                 settings.hide_email_login = hideEmail;
                 setToggle(!!apiKey);
+                setHideEmailToggle(hideEmail === 'yes');
                 msg.textContent    = data.message || '저장됨';
                 msg.style.color    = '#67c23a';
                 msg.style.display  = 'inline';

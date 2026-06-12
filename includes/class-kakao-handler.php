@@ -7,9 +7,9 @@ use FluentAuth\App\Services\AuthService;
 
 class KakaoHandler {
 
-    private const STATE_KEY    = 'fak_oauth_state';
+    private const STATE_KEY      = 'fak_oauth_state';
     private const RATE_LIMIT_KEY = 'fak_rl_';
-    private const RATE_LIMIT_MAX = 5;   // 분당 최대 인증 요청 수
+    private const RATE_LIMIT_MAX = 10;  // 분당 최대 인증 요청 수
     private const RATE_LIMIT_TTL = 60;  // 초
 
     private const ERROR_MESSAGES = [
@@ -18,11 +18,14 @@ class KakaoHandler {
         'userinfo_fail' => '카카오 사용자 정보를 가져올 수 없습니다. 다시 시도해주세요.',
         'compat_fail'   => 'FluentAuth 버전이 호환되지 않습니다. 플러그인을 업데이트해주세요.',
         'auth_fail'     => '로그인 처리 중 오류가 발생했습니다. 다시 시도해주세요.',
+        'rate_limit'    => '잠시 후 다시 시도해주세요. (요청이 너무 많습니다)',
     ];
 
     public function register(): void {
-        add_action('login_init',   [$this, 'handleLoginInit']);
-        add_action('login_form',   [$this, 'renderButton']);
+        // priority 0: FluentAuth SocialAuthHandler(priority 1)보다 먼저 실행해야
+        // ?code&state 콜백을 Google 콜백으로 가로채지 않음
+        add_action('login_init',      [$this, 'handleLoginInit'], 0);
+        add_action('login_form',      [$this, 'renderButton']);
         add_filter('wp_login_errors', [$this, 'addLoginError']);
     }
 
@@ -59,9 +62,12 @@ class KakaoHandler {
 
         if (!$code || !$state) return;
 
-        // 쿠키 바인딩 검증 (공격자 code+state를 피해자에게 전달하는 CSRF 차단)
+        // 우리 쿠키가 없으면 Google 등 다른 소셜 제공자의 콜백 — FluentAuth에 위임
         $cookieState = sanitize_text_field($_COOKIE[self::STATE_KEY] ?? '');
-        if (!$cookieState || !hash_equals($cookieState, $state)) {
+        if (!$cookieState) return;
+
+        // 쿠키 바인딩 검증 (공격자 code+state를 피해자에게 전달하는 CSRF 차단)
+        if (!hash_equals($cookieState, $state)) {
             $this->loginError('csrf_fail');
         }
 
@@ -102,8 +108,8 @@ class KakaoHandler {
         if (!empty($kakaoUsers)) {
             // 이미 연결된 계정 → WP 이메일 사용 (카카오 이메일 신뢰 불필요)
             $email = $kakaoUsers[0]->user_email;
-        } elseif ($userInfo['email_verified']) {
-            // 카카오가 검증한 이메일만 기존 계정 연결에 사용 (미검증 이메일 = 계정 탈취 위험)
+        } elseif ($userInfo['email_verified'] && $userInfo['email']) {
+            // 카카오가 검증한 이메일만 기존 계정 연결에 사용 (미검증/빈값 = 계정 탈취 위험)
             $email = $userInfo['email'];
         } else {
             // 미검증/미제공 이메일 → 해시 기반 가상 이메일 (카카오 ID 역추적 불가)
@@ -190,17 +196,20 @@ class KakaoHandler {
         exit;
     }
 
-    // IP당 분당 RATE_LIMIT_MAX회 초과 시 429 차단 (transient DoS 방지)
+    // IP당 분당 RATE_LIMIT_MAX회 초과 시 차단 (transient DoS 방지)
+    // 프록시/Cloudflare 환경: CF-Connecting-IP → X-Forwarded-For → REMOTE_ADDR 순으로 클라이언트 IP 판별
     private function checkRateLimit(): void {
-        $ip  = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        $ip = sanitize_text_field(
+            $_SERVER['HTTP_CF_CONNECTING_IP']
+            ?? (isset($_SERVER['HTTP_X_FORWARDED_FOR'])
+                ? explode(',', $_SERVER['HTTP_X_FORWARDED_FOR'])[0]
+                : ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'))
+        );
+        $ip  = trim($ip);
         $key = self::RATE_LIMIT_KEY . md5($ip);
         $hits = (int) get_transient($key);
         if ($hits >= self::RATE_LIMIT_MAX) {
-            wp_die(
-                '잠시 후 다시 시도해주세요. (1분에 최대 ' . self::RATE_LIMIT_MAX . '회)',
-                '요청 제한',
-                ['response' => 429]
-            );
+            $this->loginError('rate_limit');
         }
         set_transient($key, $hits + 1, self::RATE_LIMIT_TTL);
     }

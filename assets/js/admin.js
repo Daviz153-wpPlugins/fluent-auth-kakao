@@ -4,7 +4,7 @@
     var REST_URL    = fakAdmin.restUrl;
     var NONCE       = fakAdmin.nonce;
     var REDIRECT_URI = fakAdmin.redirectUri;
-    var settings    = { rest_api_key: '', client_secret: '' };
+    var settings    = { rest_api_key: '', client_secret: '', hide_email_login: 'no' };
     var loaded      = false;
 
     fetch(REST_URL, { headers: { 'X-WP-Nonce': NONCE } })
@@ -56,6 +56,17 @@
                     '</button>' +
                     '<span id="fak-msg" style="margin-left:12px;font-size:13px;display:none;"></span>' +
                 '</div>' +
+            '</div>' +
+
+            '<hr style="border:none;border-top:1px solid #ebeef5;margin:16px 0 14px;">' +
+
+            '<div style="display:flex;align-items:center;gap:10px;">' +
+                '<div id="fak-hide-email-toggle" style="width:40px;height:20px;border-radius:10px;' +
+                     'background:#dcdfe6;position:relative;cursor:pointer;transition:background .3s;flex-shrink:0;">' +
+                    '<div id="fak-hide-email-dot" style="position:absolute;top:2px;left:2px;width:16px;height:16px;' +
+                         'background:#fff;border-radius:50%;transition:left .3s;box-shadow:0 1px 3px rgba(0,0,0,.2);"></div>' +
+                '</div>' +
+                '<span style="font-size:13px;color:#606266;">이메일 로그인 숨기기 (소셜 로그인 버튼만 표시)</span>' +
             '</div>';
 
         return card;
@@ -71,6 +82,14 @@
         fields.style.display     = on ? 'block' : 'none';
     }
 
+    function setHideEmailToggle(on) {
+        var toggle = document.getElementById('fak-hide-email-toggle');
+        var dot    = document.getElementById('fak-hide-email-dot');
+        if (!toggle) return;
+        toggle.style.background = on ? '#409eff' : '#dcdfe6';
+        dot.style.left           = on ? '22px' : '2px';
+    }
+
     function populateCard() {
         if (!loaded) return;
         var apiKey = document.getElementById('fak-api-key');
@@ -79,6 +98,7 @@
         apiKey.value = settings.rest_api_key  || '';
         secret.value = settings.client_secret || '';
         setToggle(!!settings.rest_api_key);
+        setHideEmailToggle(settings.hide_email_login === 'yes');
     }
 
     function bindEvents() {
@@ -92,21 +112,29 @@
             setToggle(!isOn);
         });
 
+        document.getElementById('fak-hide-email-toggle').addEventListener('click', function () {
+            var isOn = this.style.background === 'rgb(64, 158, 255)';
+            setHideEmailToggle(!isOn);
+        });
+
         btn.addEventListener('click', function () {
             var apiKey = document.getElementById('fak-api-key').value.trim();
             var secret = document.getElementById('fak-client-secret').value.trim();
             var msg    = document.getElementById('fak-msg');
             btn.disabled = true;
 
+            var hideEmail = document.getElementById('fak-hide-email-toggle').style.background === 'rgb(64, 158, 255)' ? 'yes' : 'no';
+
             fetch(REST_URL, {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': NONCE },
-                body:    JSON.stringify({ rest_api_key: apiKey, client_secret: secret }),
+                body:    JSON.stringify({ rest_api_key: apiKey, client_secret: secret, hide_email_login: hideEmail }),
             })
             .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function (data) {
-                settings.rest_api_key  = apiKey;
-                settings.client_secret = secret;
+                settings.rest_api_key    = apiKey;
+                settings.client_secret   = secret;
+                settings.hide_email_login = hideEmail;
                 setToggle(!!apiKey);
                 msg.textContent    = data.message || '저장됨';
                 msg.style.color    = '#67c23a';

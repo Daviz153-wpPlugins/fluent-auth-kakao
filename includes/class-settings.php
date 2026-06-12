@@ -30,9 +30,10 @@ class Settings {
     public function restGetSettings(): array {
         $s = get_option(self::OPTION_KEY, []);
         return [
-            'rest_api_key'  => $s['rest_api_key']  ?? '',
-            'client_secret' => $s['client_secret'] ?? '',
-            'redirect_uri'  => wp_login_url(),
+            'rest_api_key'     => $s['rest_api_key']     ?? '',
+            'client_secret'    => $s['client_secret']    ?? '',
+            'hide_email_login' => $s['hide_email_login'] ?? 'no',
+            'redirect_uri'     => wp_login_url(),
         ];
     }
 
@@ -44,8 +45,9 @@ class Settings {
 
     private function sanitize(array $input): array {
         return [
-            'rest_api_key'  => sanitize_text_field($input['rest_api_key']  ?? ''),
-            'client_secret' => sanitize_text_field($input['client_secret'] ?? ''),
+            'rest_api_key'     => sanitize_text_field($input['rest_api_key']     ?? ''),
+            'client_secret'    => sanitize_text_field($input['client_secret']    ?? ''),
+            'hide_email_login' => ($input['hide_email_login'] ?? '') === 'yes' ? 'yes' : 'no',
         ];
     }
 

@@ -27,6 +27,7 @@ class KakaoHandler {
         add_action('login_init',      [$this, 'handleLoginInit'], 0);
         add_action('login_form',      [$this, 'renderButton']);
         add_filter('wp_login_errors', [$this, 'addLoginError']);
+        add_action('login_head',      [$this, 'maybeHideEmailForm']);
     }
 
     public function handleLoginInit(): void {
@@ -212,6 +213,20 @@ class KakaoHandler {
             $this->loginError('rate_limit');
         }
         set_transient($key, $hits + 1, self::RATE_LIMIT_TTL);
+    }
+
+    public function maybeHideEmailForm(): void {
+        $settings = get_option('fak_settings', []);
+        if (($settings['hide_email_login'] ?? '') !== 'yes') return;
+        ?>
+        <style>
+            #loginform p.login-username,
+            #loginform p.login-password,
+            #loginform .forgetmenot,
+            #loginform p.submit,
+            #nav, #backtoblog { display: none !important; }
+        </style>
+        <?php
     }
 
     // 카카오 ID → 해시 기반 가상 이메일 (ID 역추적 불가, 사이트별 고유값)

@@ -7,7 +7,10 @@ use FluentAuth\App\Services\AuthService;
 
 class KakaoHandler {
 
-    private const STATE_KEY = 'fak_oauth_state';
+    private const STATE_KEY    = 'fak_oauth_state';
+    private const RATE_LIMIT_KEY = 'fak_rl_';
+    private const RATE_LIMIT_MAX = 5;   // 분당 최대 인증 요청 수
+    private const RATE_LIMIT_TTL = 60;  // 초
 
     private const ERROR_MESSAGES = [
         'csrf_fail'     => '보안 검증에 실패했습니다. 다시 시도해주세요.',
@@ -32,6 +35,8 @@ class KakaoHandler {
             if (!$kakao->isConfigured()) {
                 wp_die('카카오 로그인 설정이 완료되지 않았습니다. 관리자에게 문의하세요.');
             }
+
+            $this->checkRateLimit();
 
             $state = wp_generate_password(32, false);
             set_transient(self::STATE_KEY . '_' . $state, 1, 300);
@@ -101,8 +106,8 @@ class KakaoHandler {
             // 카카오가 검증한 이메일만 기존 계정 연결에 사용 (미검증 이메일 = 계정 탈취 위험)
             $email = $userInfo['email'];
         } else {
-            // 미검증 이메일 → 가상 이메일로 신규 계정 생성 (기존 계정과 절대 충돌 없음)
-            $email = 'kakao_' . $userInfo['id'] . '@kakao.user';
+            // 미검증/미제공 이메일 → 해시 기반 가상 이메일 (카카오 ID 역추적 불가)
+            $email = self::virtualEmail($userInfo['id']);
         }
 
         $isNewUser = empty($kakaoUsers) && !get_user_by('email', $email);
@@ -183,5 +188,25 @@ class KakaoHandler {
             'fak_error' => $code,
         ], wp_login_url()));
         exit;
+    }
+
+    // IP당 분당 RATE_LIMIT_MAX회 초과 시 429 차단 (transient DoS 방지)
+    private function checkRateLimit(): void {
+        $ip  = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        $key = self::RATE_LIMIT_KEY . md5($ip);
+        $hits = (int) get_transient($key);
+        if ($hits >= self::RATE_LIMIT_MAX) {
+            wp_die(
+                '잠시 후 다시 시도해주세요. (1분에 최대 ' . self::RATE_LIMIT_MAX . '회)',
+                '요청 제한',
+                ['response' => 429]
+            );
+        }
+        set_transient($key, $hits + 1, self::RATE_LIMIT_TTL);
+    }
+
+    // 카카오 ID → 해시 기반 가상 이메일 (ID 역추적 불가, 사이트별 고유값)
+    private static function virtualEmail(int $kakaoId): string {
+        return 'k' . substr(wp_hash((string) $kakaoId), 0, 24) . '@kakao.user';
     }
 }

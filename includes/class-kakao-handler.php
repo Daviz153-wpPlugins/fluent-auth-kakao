@@ -12,7 +12,7 @@ class KakaoHandler {
     public function register(): void {
         add_action('login_init',   [$this, 'handleLoginInit']);
         add_action('login_form',   [$this, 'renderButton']);
-        add_filter('login_errors', [$this, 'addLoginError']);
+        add_filter('wp_login_errors', [$this, 'addLoginError']);
     }
 
     public function handleLoginInit(): void {
@@ -123,10 +123,10 @@ class KakaoHandler {
         <?php
     }
 
-    public function addLoginError(string $errors): string {
+    public function addLoginError(\WP_Error $errors): \WP_Error {
         if (isset($_GET['login'], $_GET['fak_message']) && $_GET['login'] === 'kakao_error') {
-            $message = esc_html(rawurldecode(sanitize_text_field($_GET['fak_message'])));
-            $errors .= '<br>' . $message;
+            $message = sanitize_text_field(rawurldecode($_GET['fak_message']));
+            $errors->add('kakao_error', esc_html($message));
         }
         return $errors;
     }

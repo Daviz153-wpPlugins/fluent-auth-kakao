@@ -3,13 +3,16 @@ namespace FluentAuthKakao;
 
 defined('ABSPATH') || exit;
 
+use FluentAuth\App\Services\AuthService;
+
 class KakaoHandler {
 
     private const STATE_KEY = 'fak_oauth_state';
 
     public function register(): void {
-        add_action('login_init', [$this, 'handleLoginInit']);
-        add_action('login_form',  [$this, 'renderButton']);
+        add_action('login_init',   [$this, 'handleLoginInit']);
+        add_action('login_form',   [$this, 'renderButton']);
+        add_filter('login_errors', [$this, 'addLoginError']);
     }
 
     public function handleLoginInit(): void {
@@ -23,7 +26,7 @@ class KakaoHandler {
             }
 
             $state = wp_generate_password(32, false);
-            set_transient(self::STATE_KEY . '_' . $state, 1, 300); // 5분 유효
+            set_transient(self::STATE_KEY . '_' . $state, 1, 300);
             wp_redirect($kakao->getAuthorizeUrl($state));
             exit;
         }
@@ -34,9 +37,10 @@ class KakaoHandler {
 
         if (!$code || !$state) return;
 
-        // state 검증 (CSRF)
         $transientKey = self::STATE_KEY . '_' . $state;
-        if (!get_transient($transientKey)) return;
+        if (!get_transient($transientKey)) {
+            $this->loginError('보안 검증에 실패했습니다. 다시 시도해주세요.');
+        }
         delete_transient($transientKey);
 
         $this->processCallback($code);
@@ -55,36 +59,30 @@ class KakaoHandler {
             $this->loginError($userInfo->get_error_message());
         }
 
-        $wpUser = get_user_by('email', $userInfo['email']);
+        $existingUser = get_user_by('email', $userInfo['email']);
 
-        if ($wpUser) {
-            // 기존 계정 연결
-            update_user_meta($wpUser->ID, 'fak_kakao_id', $userInfo['id']);
-        } else {
-            // 신규 계정 생성
-            $userId = wp_insert_user([
-                'user_login'   => 'kakao_' . $userInfo['id'],
-                'user_email'   => $userInfo['email'],
-                'display_name' => $userInfo['nickname'],
-                'user_pass'    => wp_generate_password(),
-                'role'         => 'subscriber',
-            ]);
-
-            if (is_wp_error($userId)) {
-                $this->loginError('계정 생성에 실패했습니다.');
-            }
-
-            update_user_meta($userId, 'fak_kakao_id', $userInfo['id']);
-            $this->registerToFluentCrm($userId, $userInfo);
-            $wpUser = get_user_by('ID', $userId);
+        if (!method_exists(AuthService::class, 'doUserAuth')) {
+            $this->loginError('FluentAuth 버전이 호환되지 않습니다. 플러그인을 업데이트해주세요.');
         }
 
-        // 로그인 처리
-        wp_set_current_user($wpUser->ID);
-        wp_set_auth_cookie($wpUser->ID, true);
-        do_action('wp_login', $wpUser->user_login, $wpUser);
+        $result = AuthService::doUserAuth([
+            'email'      => $userInfo['email'],
+            'first_name' => $userInfo['nickname'],
+            'username'   => 'kakao_' . $userInfo['id'],
+        ], 'kakao');
 
-        $redirect = apply_filters('login_redirect', admin_url(), '', $wpUser);
+        if (is_wp_error($result)) {
+            $this->loginError($result->get_error_message());
+        }
+
+        update_user_meta($result->ID, 'fak_kakao_id', $userInfo['id']);
+
+        if (!$existingUser) {
+            $this->registerToFluentCrm($result->ID, $userInfo);
+        }
+
+        $redirectTo = sanitize_url($_REQUEST['redirect_to'] ?? '');
+        $redirect   = apply_filters('login_redirect', home_url(), $redirectTo, $result);
         wp_redirect($redirect);
         exit;
     }
@@ -92,15 +90,13 @@ class KakaoHandler {
     private function registerToFluentCrm(int $userId, array $userInfo): void {
         if (!defined('FLUENTCRM')) return;
 
-        $contactData = [
-            'email'      => $userInfo['email'],
-            'first_name' => $userInfo['nickname'],
-            'source'     => 'kakao_login',
-        ];
-
         $contact = \FluentCrmApi('contacts')->getContact($userInfo['email']);
         if (!$contact) {
-            \FluentCrmApi('contacts')->createOrUpdate($contactData);
+            \FluentCrmApi('contacts')->createOrUpdate([
+                'email'      => $userInfo['email'],
+                'first_name' => $userInfo['nickname'],
+                'source'     => 'kakao_login',
+            ]);
         }
     }
 
@@ -127,8 +123,19 @@ class KakaoHandler {
         <?php
     }
 
+    public function addLoginError(string $errors): string {
+        if (isset($_GET['login'], $_GET['fak_message']) && $_GET['login'] === 'kakao_error') {
+            $message = esc_html(rawurldecode(sanitize_text_field($_GET['fak_message'])));
+            $errors .= '<br>' . $message;
+        }
+        return $errors;
+    }
+
     private function loginError(string $message): never {
-        wp_redirect(add_query_arg('login', 'kakao_error', wp_login_url()));
+        wp_redirect(add_query_arg([
+            'login'       => 'kakao_error',
+            'fak_message' => rawurlencode($message),
+        ], wp_login_url()));
         exit;
     }
 }

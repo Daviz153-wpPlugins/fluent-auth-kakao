@@ -84,6 +84,7 @@ class KakaoAuth {
         }
 
         $account  = $data['kakao_account'] ?? [];
+
         $profile  = $account['profile'] ?? [];
         $email    = sanitize_email($account['email'] ?? '');
         $nickname = sanitize_text_field($profile['nickname'] ?? '');

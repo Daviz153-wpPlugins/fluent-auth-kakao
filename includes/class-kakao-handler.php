@@ -27,6 +27,15 @@ class KakaoHandler {
 
             $state = wp_generate_password(32, false);
             set_transient(self::STATE_KEY . '_' . $state, 1, 300);
+            // 로그인 CSRF 방지: state를 HttpOnly 쿠키에도 바인딩
+            setcookie(self::STATE_KEY, $state, [
+                'expires'  => time() + 300,
+                'path'     => COOKIEPATH,
+                'domain'   => COOKIE_DOMAIN,
+                'secure'   => is_ssl(),
+                'httponly' => true,
+                'samesite' => 'Lax',
+            ]);
             wp_redirect($kakao->getAuthorizeUrl($state));
             exit;
         }
@@ -37,11 +46,18 @@ class KakaoHandler {
 
         if (!$code || !$state) return;
 
+        // 쿠키 바인딩 검증 (공격자 code+state를 피해자에게 전달하는 CSRF 차단)
+        $cookieState = sanitize_text_field($_COOKIE[self::STATE_KEY] ?? '');
+        if (!$cookieState || !hash_equals($cookieState, $state)) {
+            $this->loginError('보안 검증에 실패했습니다. 다시 시도해주세요.');
+        }
+
         $transientKey = self::STATE_KEY . '_' . $state;
         if (!get_transient($transientKey)) {
             $this->loginError('보안 검증에 실패했습니다. 다시 시도해주세요.');
         }
         delete_transient($transientKey);
+        setcookie(self::STATE_KEY, '', time() - 3600, COOKIEPATH, COOKIE_DOMAIN, is_ssl(), true);
 
         $this->processCallback($code);
     }
@@ -59,16 +75,34 @@ class KakaoHandler {
             $this->loginError($userInfo->get_error_message());
         }
 
-        $existingUser = get_user_by('email', $userInfo['email']);
-
         if (!method_exists(AuthService::class, 'doUserAuth')) {
             $this->loginError('FluentAuth 버전이 호환되지 않습니다. 플러그인을 업데이트해주세요.');
         }
 
+        // 1) 카카오 ID로 먼저 조회 — 가장 신뢰도 높음
+        $kakaoUsers = get_users([
+            'meta_key'   => 'fak_kakao_id',
+            'meta_value' => $userInfo['id'],
+            'number'     => 1,
+        ]);
+
+        if (!empty($kakaoUsers)) {
+            // 이미 연결된 계정 → WP 이메일 사용 (카카오 이메일 신뢰 불필요)
+            $email = $kakaoUsers[0]->user_email;
+        } elseif ($userInfo['email_verified']) {
+            // 카카오가 검증한 이메일만 기존 계정 연결에 사용 (미검증 이메일 = 계정 탈취 위험)
+            $email = $userInfo['email'];
+        } else {
+            // 미검증 이메일 → 가상 이메일로 신규 계정 생성 (기존 계정과 절대 충돌 없음)
+            $email = 'kakao_' . $userInfo['id'] . '@kakao.user';
+        }
+
+        $isNewUser = empty($kakaoUsers) && !get_user_by('email', $email);
+
         // 사이트 가입 허용 여부와 관계없이 카카오 로그인은 계정 생성 허용
         add_filter('fluent_auth/signup_enabled', '__return_true');
         $result = AuthService::doUserAuth([
-            'email'      => $userInfo['email'],
+            'email'      => $email,
             'first_name' => $userInfo['nickname'],
             'username'   => 'kakao_' . $userInfo['id'],
         ], 'kakao');
@@ -80,7 +114,7 @@ class KakaoHandler {
 
         update_user_meta($result->ID, 'fak_kakao_id', $userInfo['id']);
 
-        if (!$existingUser) {
+        if ($isNewUser) {
             $this->registerToFluentCrm($result->ID, $userInfo);
         }
 

@@ -88,15 +88,19 @@ class KakaoAuth {
         $email    = sanitize_email($account['email'] ?? '');
         $nickname = sanitize_text_field($profile['nickname'] ?? '');
 
-        // 이메일 없으면 카카오 ID 기반 가상 이메일 생성
+        // 이메일 미제공 시 가상 이메일 (handler에서 최종 판단)
         if (!$email) {
             $email = 'kakao_' . $data['id'] . '@kakao.user';
         }
 
+        // 카카오가 이메일 소유권을 검증했는지 확인 (계정 탈취 방지 핵심)
+        $emailVerified = !empty($account['is_email_valid']) && !empty($account['is_email_verified']);
+
         return [
-            'id'       => (int) $data['id'],
-            'email'    => $email,
-            'nickname' => $nickname ?: 'kakao_' . $data['id'],
+            'id'             => (int) $data['id'],
+            'email'          => $email,
+            'email_verified' => $emailVerified,
+            'nickname'       => $nickname ?: 'kakao_' . $data['id'],
         ];
     }
 }

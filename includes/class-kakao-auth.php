@@ -89,12 +89,11 @@ class KakaoAuth {
         $email    = sanitize_email($account['email'] ?? '');
         $nickname = sanitize_text_field($profile['nickname'] ?? '');
 
-        // 이메일 미제공 시 빈 문자열 반환 — 가상 이메일은 핸들러가 생성
         if (!$email) {
             $email = '';
         }
 
-        // 카카오가 이메일 소유권을 검증했는지 확인 (계정 탈취 방지 핵심)
+        // 둘 다 true여야 소유 검증 완료 — 미검증 이메일로 기존 계정 탈취 방지
         $emailVerified = !empty($account['is_email_valid']) && !empty($account['is_email_verified']);
 
         return [

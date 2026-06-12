@@ -22,8 +22,7 @@ class KakaoHandler {
     ];
 
     public function register(): void {
-        // priority 0: FluentAuth SocialAuthHandler(priority 1)보다 먼저 실행해야
-        // ?code&state 콜백을 Google 콜백으로 가로채지 않음
+        // priority 0: FluentAuth SocialAuthHandler(priority 1)이 Google ?code&state를 가로채기 전에 실행
         add_action('login_init',      [$this, 'handleLoginInit'], 0);
         add_action('login_form',      [$this, 'renderButton']);
         add_filter('wp_login_errors', [$this, 'addLoginError']);
@@ -33,7 +32,6 @@ class KakaoHandler {
     public function handleLoginInit(): void {
         $auth = sanitize_text_field($_GET['fak_auth'] ?? '');
 
-        // Step 1: 카카오 인증 페이지로 리다이렉트
         if ($auth === 'kakao') {
             $kakao = new KakaoAuth();
             if (!$kakao->isConfigured()) {
@@ -44,7 +42,6 @@ class KakaoHandler {
 
             $state = wp_generate_password(32, false);
             set_transient(self::STATE_KEY . '_' . $state, 1, 300);
-            // 로그인 CSRF 방지: state를 HttpOnly 쿠키에도 바인딩
             setcookie(self::STATE_KEY, $state, [
                 'expires'  => time() + 300,
                 'path'     => COOKIEPATH,
@@ -57,17 +54,15 @@ class KakaoHandler {
             exit;
         }
 
-        // Step 2: 카카오 콜백 처리
         $code  = sanitize_text_field($_GET['code']  ?? '');
         $state = sanitize_text_field($_GET['state'] ?? '');
 
         if (!$code || !$state) return;
 
-        // 우리 쿠키가 없으면 Google 등 다른 소셜 제공자의 콜백 — FluentAuth에 위임
+        // 쿠키 없으면 Google 등 다른 소셜 콜백 — FluentAuth에 위임
         $cookieState = sanitize_text_field($_COOKIE[self::STATE_KEY] ?? '');
         if (!$cookieState) return;
 
-        // 쿠키 바인딩 검증 (공격자 code+state를 피해자에게 전달하는 CSRF 차단)
         if (!hash_equals($cookieState, $state)) {
             $this->loginError('csrf_fail');
         }
@@ -99,7 +94,6 @@ class KakaoHandler {
             $this->loginError('compat_fail');
         }
 
-        // 1) 카카오 ID로 먼저 조회 — 가장 신뢰도 높음
         $kakaoUsers = get_users([
             'meta_key'   => 'fak_kakao_id',
             'meta_value' => $userInfo['id'],
@@ -107,19 +101,15 @@ class KakaoHandler {
         ]);
 
         if (!empty($kakaoUsers)) {
-            // 이미 연결된 계정 → WP 이메일 사용 (카카오 이메일 신뢰 불필요)
             $email = $kakaoUsers[0]->user_email;
         } elseif ($userInfo['email_verified'] && $userInfo['email']) {
-            // 카카오가 검증한 이메일만 기존 계정 연결에 사용 (미검증/빈값 = 계정 탈취 위험)
             $email = $userInfo['email'];
         } else {
-            // 미검증/미제공 이메일 → 해시 기반 가상 이메일 (카카오 ID 역추적 불가)
             $email = self::virtualEmail($userInfo['id']);
         }
 
         $isNewUser = empty($kakaoUsers) && !get_user_by('email', $email);
 
-        // 사이트 가입 허용 여부와 관계없이 카카오 로그인은 계정 생성 허용
         add_filter('fluent_auth/signup_enabled', '__return_true');
         $result = AuthService::doUserAuth([
             'email'      => $email,
@@ -134,7 +124,8 @@ class KakaoHandler {
 
         update_user_meta($result->ID, 'fak_kakao_id', $userInfo['id']);
 
-        if ($isNewUser) {
+        // FluentCRM 등록: 실제 이메일이 있는 신규 사용자만 (빈 이메일 → createOrUpdate 예외 방지)
+        if ($isNewUser && $userInfo['email']) {
             $this->registerToFluentCrm($result->ID, $userInfo);
         }
 
@@ -197,8 +188,7 @@ class KakaoHandler {
         exit;
     }
 
-    // IP당 분당 RATE_LIMIT_MAX회 초과 시 차단 (transient DoS 방지)
-    // 프록시/Cloudflare 환경: CF-Connecting-IP → X-Forwarded-For → REMOTE_ADDR 순으로 클라이언트 IP 판별
+    // CF-Connecting-IP → X-Forwarded-For → REMOTE_ADDR 순으로 클라이언트 IP 판별
     private function checkRateLimit(): void {
         $ip = sanitize_text_field(
             $_SERVER['HTTP_CF_CONNECTING_IP']
@@ -218,6 +208,8 @@ class KakaoHandler {
     public function maybeHideEmailForm(): void {
         $settings = get_option('fak_settings', []);
         if (($settings['hide_email_login'] ?? '') !== 'yes') return;
+        // 카카오 미설정 상태에서 폼 숨기면 버튼도 폼도 없는 잠금 화면이 됨
+        if (!(new KakaoAuth())->isConfigured()) return;
         ?>
         <style>
             /* WordPress 6.x: p.login-username → <p>(no class), p.login-password → div.user-pass-wrap */
@@ -232,7 +224,6 @@ class KakaoHandler {
         <?php
     }
 
-    // 카카오 ID → 해시 기반 가상 이메일 (ID 역추적 불가, 사이트별 고유값)
     private static function virtualEmail(int $kakaoId): string {
         return 'k' . substr(wp_hash((string) $kakaoId), 0, 24) . '@kakao.user';
     }

@@ -27,7 +27,7 @@ class KakaoHandler {
 	public function register(): void {
 		// priority 0: FluentAuth SocialAuthHandler(priority 1)이 Google ?code&state를 가로채기 전에 실행
 		add_action( 'login_init', array( $this, 'handleLoginInit' ), 0 );
-		add_action( 'login_form', array( $this, 'renderButton' ) );
+		add_action( 'login_form', array( $this, 'renderButton' ), 20 );
 		add_action( 'login_head', array( $this, 'maybeHideEmailForm' ) );
 		add_shortcode( 'fak_kakao_login', array( $this, 'renderShortcode' ) );
 	}
@@ -190,6 +190,7 @@ class KakaoHandler {
 
 		// 쿠키에서 리다이렉트 목적지 읽고 즉시 삭제 (Google의 fs_intent_redirect와 동일)
 		$intentRedirectTo = sanitize_url( wp_unslash( $_COOKIE[ self::INTENT_COOKIE_KEY ] ?? '' ) );
+		$fromCookie       = (bool) $intentRedirectTo;
 		setcookie( self::INTENT_COOKIE_KEY, '', time() - 3600, COOKIEPATH, COOKIE_DOMAIN, is_ssl(), true );
 
 		// Google과 동일한 역할/멀티사이트 기반 기본 리다이렉트 목적지 결정
@@ -205,7 +206,14 @@ class KakaoHandler {
 			}
 		}
 
-		$redirect = apply_filters( 'login_redirect', $intentRedirectTo, $intentRedirectTo, $result );
+		// '' 전달 → FluentAuth 리다이렉트 설정 우선 적용, WooCommerce 등 서드파티 훅 간섭 방지
+		// FluentAuth의 MagicLoginHandler가 wp-login.php?redirect_to= 를 보는 즉시 _fls_redirect_to 쿠키를 세팅.
+		// 카카오 OAuth 라운드트립 후에도 남아 FluentAuth의 설정 리다이렉트를 무시하므로 먼저 제거.
+		unset( $_COOKIE['_fls_redirect_to'] );
+		setcookie( '_fls_redirect_to', '', time() - 3600, COOKIEPATH, COOKIE_DOMAIN );
+
+		// '' 전달 → FluentAuth 리다이렉트 설정 우선 적용
+		$redirect = apply_filters( 'login_redirect', $intentRedirectTo, '', $result );
 		wp_safe_redirect( $redirect );
 		exit;
 	}
@@ -246,6 +254,19 @@ class KakaoHandler {
 			$url = add_query_arg( 'redirect_to', $redirectTo, $url );
 		}
 		echo $this->buttonHtml( $url );
+		?>
+		<script>
+		document.addEventListener("DOMContentLoaded", function() {
+			setTimeout(function() {
+				var kakaoBtn = document.getElementById("fak_kakao_btn_wrap");
+				var loginForm = document.getElementById("loginform");
+				if (kakaoBtn && loginForm) {
+					loginForm.appendChild(kakaoBtn);
+				}
+			}, 0);
+		});
+		</script>
+		<?php
 	}
 
 	public function renderShortcode( array $atts ): string {
@@ -276,7 +297,7 @@ class KakaoHandler {
 	private function buttonHtml( string $loginUrl ): string {
 		ob_start();
 		?>
-		<div style="text-align:center;margin:8px 0 16px;">
+		<div id="fak_kakao_btn_wrap" style="text-align:center;margin:8px 0 16px;">
 			<a href="<?php echo esc_url( $loginUrl ); ?>"
 				style="display:inline-flex;align-items:center;justify-content:center;gap:8px;
 						width:100%;padding:10px 16px;background:#FEE500;color:#000000;

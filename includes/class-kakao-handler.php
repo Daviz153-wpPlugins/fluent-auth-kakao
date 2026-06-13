@@ -9,25 +9,24 @@ class KakaoHandler {
 
     private const STATE_KEY      = 'fak_oauth_state';
     private const RATE_LIMIT_KEY = 'fak_rl_';
-    private const RATE_LIMIT_MAX = 10;  // 분당 최대 인증 요청 수
-    private const RATE_LIMIT_TTL = 60;  // 초
+    private const RATE_LIMIT_MAX = 10;
+    private const RATE_LIMIT_TTL = 60;
 
     private const ERROR_MESSAGES = [
-        'csrf_fail'     => '보안 검증에 실패했습니다. 다시 시도해주세요.',
-        'token_fail'    => '카카오 인증에 실패했습니다. 다시 시도해주세요.',
-        'userinfo_fail' => '카카오 사용자 정보를 가져올 수 없습니다. 다시 시도해주세요.',
-        'compat_fail'    => 'FluentAuth 버전이 호환되지 않습니다. 플러그인을 업데이트해주세요.',
-        'auth_fail'      => '로그인 처리 중 오류가 발생했습니다. 다시 시도해주세요.',
+        'csrf_fail'       => '보안 검증에 실패했습니다. 다시 시도해주세요.',
+        'token_fail'      => '카카오 인증에 실패했습니다. 다시 시도해주세요.',
+        'userinfo_fail'   => '카카오 사용자 정보를 가져올 수 없습니다. 다시 시도해주세요.',
+        'compat_fail'     => 'FluentAuth 버전이 호환되지 않습니다. 플러그인을 업데이트해주세요.',
+        'auth_fail'       => '로그인 처리 중 오류가 발생했습니다. 다시 시도해주세요.',
         'signup_disabled' => '신규 가입이 제한되어 있습니다. 기존 계정으로 로그인하거나 관리자에게 문의하세요.',
-        'rate_limit'     => '잠시 후 다시 시도해주세요. (요청이 너무 많습니다)',
+        'rate_limit'      => '잠시 후 다시 시도해주세요. (요청이 너무 많습니다)',
     ];
 
     public function register(): void {
         // priority 0: FluentAuth SocialAuthHandler(priority 1)이 Google ?code&state를 가로채기 전에 실행
-        add_action('login_init',      [$this, 'handleLoginInit'], 0);
-        add_action('login_form',      [$this, 'renderButton']);
-        add_filter('wp_login_errors', [$this, 'addLoginError']);
-        add_action('login_head',      [$this, 'maybeHideEmailForm']);
+        add_action('login_init', [$this, 'handleLoginInit'], 0);
+        add_action('login_form', [$this, 'renderButton']);
+        add_action('login_head', [$this, 'maybeHideEmailForm']);
         add_shortcode('fak_kakao_login', [$this, 'renderShortcode']);
     }
 
@@ -40,7 +39,10 @@ class KakaoHandler {
                 wp_die('카카오 로그인 설정이 완료되지 않았습니다. 관리자에게 문의하세요.');
             }
 
-            $this->checkRateLimit();
+            if ($this->isRateLimited()) {
+                $this->loginError('rate_limit');
+                return;
+            }
 
             $state = wp_generate_password(32, false);
             set_transient(self::STATE_KEY . '_' . $state, 1, 300);
@@ -67,11 +69,13 @@ class KakaoHandler {
 
         if (!hash_equals($cookieState, $state)) {
             $this->loginError('csrf_fail');
+            return;
         }
 
         $transientKey = self::STATE_KEY . '_' . $state;
         if (!get_transient($transientKey)) {
             $this->loginError('csrf_fail');
+            return;
         }
         delete_transient($transientKey);
         setcookie(self::STATE_KEY, '', time() - 3600, COOKIEPATH, COOKIE_DOMAIN, is_ssl(), true);
@@ -85,15 +89,18 @@ class KakaoHandler {
         $tokenData = $kakao->getToken($code);
         if (is_wp_error($tokenData)) {
             $this->loginError('token_fail');
+            return;
         }
 
         $userInfo = $kakao->getUserInfo($tokenData['access_token']);
         if (is_wp_error($userInfo)) {
             $this->loginError('userinfo_fail');
+            return;
         }
 
         if (!method_exists(AuthService::class, 'doUserAuth')) {
             $this->loginError('compat_fail');
+            return;
         }
 
         $kakaoUsers = get_users([
@@ -119,8 +126,9 @@ class KakaoHandler {
         ], 'kakao');
 
         if (is_wp_error($result)) {
-            $code = $result->get_error_code() === 'signup_disabled' ? 'signup_disabled' : 'auth_fail';
-            $this->loginError($code);
+            $errCode = $result->get_error_code() === 'signup_disabled' ? 'signup_disabled' : 'auth_fail';
+            $this->loginError($errCode);
+            return;
         }
 
         update_user_meta($result->ID, 'fak_kakao_id', $userInfo['id']);
@@ -162,7 +170,7 @@ class KakaoHandler {
         $kakao = new KakaoAuth();
         if (!$kakao->isConfigured()) return '';
 
-        $atts      = shortcode_atts(['redirect_to' => ''], $atts, 'fak_kakao_login');
+        $atts       = shortcode_atts(['redirect_to' => ''], $atts, 'fak_kakao_login');
         $redirectTo = $atts['redirect_to'] ?: (is_ssl() ? 'https://' : 'http://') . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
 
         $loginUrl = add_query_arg([
@@ -194,38 +202,28 @@ class KakaoHandler {
         return ob_get_clean();
     }
 
-    public function addLoginError(\WP_Error $errors): \WP_Error {
-        if (isset($_GET['login'], $_GET['fak_error']) && $_GET['login'] === 'kakao_error') {
-            $code    = sanitize_key($_GET['fak_error']);
-            $message = self::ERROR_MESSAGES[$code] ?? '카카오 로그인 중 오류가 발생했습니다. 다시 시도해주세요.';
-            $errors->add('kakao_error', $message);
-        }
-        return $errors;
-    }
-
-    private function loginError(string $code): never {
-        wp_redirect(add_query_arg([
-            'login'     => 'kakao_error',
-            'fak_error' => $code,
-        ], wp_login_url()));
-        exit;
+    // Google과 동일한 방식: 리다이렉트 없이 wp_login_errors 필터로 에러 표시
+    private function loginError(string $code): void {
+        $message = self::ERROR_MESSAGES[$code] ?? '카카오 로그인 중 오류가 발생했습니다. 다시 시도해주세요.';
+        $error   = new \WP_Error('kakao_error', $message);
+        add_filter('wp_login_errors', static function () use ($error) {
+            return $error;
+        });
     }
 
     // CF-Connecting-IP → X-Forwarded-For → REMOTE_ADDR 순으로 클라이언트 IP 판별
-    private function checkRateLimit(): void {
+    private function isRateLimited(): bool {
         $ip = sanitize_text_field(
             $_SERVER['HTTP_CF_CONNECTING_IP']
             ?? (isset($_SERVER['HTTP_X_FORWARDED_FOR'])
                 ? explode(',', $_SERVER['HTTP_X_FORWARDED_FOR'])[0]
                 : ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'))
         );
-        $ip  = trim($ip);
-        $key = self::RATE_LIMIT_KEY . md5($ip);
+        $ip   = trim($ip);
+        $key  = self::RATE_LIMIT_KEY . md5($ip);
         $hits = (int) get_transient($key);
-        if ($hits >= self::RATE_LIMIT_MAX) {
-            $this->loginError('rate_limit');
-        }
         set_transient($key, $hits + 1, self::RATE_LIMIT_TTL);
+        return $hits >= self::RATE_LIMIT_MAX;
     }
 
     public function maybeHideEmailForm(): void {

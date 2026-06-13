@@ -257,19 +257,20 @@ class KakaoHandler {
         });
     }
 
-    // CF-Connecting-IP → X-Forwarded-For → REMOTE_ADDR 순으로 클라이언트 IP 판별
     private function isRateLimited(): bool {
-        $ip = sanitize_text_field(
-            $_SERVER['HTTP_CF_CONNECTING_IP']
-            ?? (isset($_SERVER['HTTP_X_FORWARDED_FOR'])
-                ? explode(',', $_SERVER['HTTP_X_FORWARDED_FOR'])[0]
-                : ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'))
-        );
-        $ip   = trim($ip);
-        $key  = self::RATE_LIMIT_KEY . md5($ip);
+        $ip  = $this->getClientIp();
+        $key = self::RATE_LIMIT_KEY . md5($ip);
         $hits = (int) get_transient($key);
         set_transient($key, $hits + 1, self::RATE_LIMIT_TTL);
         return $hits >= self::RATE_LIMIT_MAX;
+    }
+
+    // REMOTE_ADDR(TCP 피어)만 기본 신뢰 — HTTP 헤더는 클라이언트가 위조 가능.
+    // Cloudflare 등 리버스 프록시 뒤라면 fak/client_ip 필터로 재정의:
+    //   add_filter('fak/client_ip', fn() => sanitize_text_field($_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['REMOTE_ADDR']));
+    private function getClientIp(): string {
+        $ip = sanitize_text_field($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
+        return (string) apply_filters('fak/client_ip', $ip);
     }
 
     public function maybeHideEmailForm(): void {

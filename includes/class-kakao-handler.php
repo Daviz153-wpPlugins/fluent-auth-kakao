@@ -219,6 +219,7 @@ class KakaoHandler {
             #loginform p.login-password,
             #loginform .forgetmenot,
             #loginform p.submit,
+            .language-switcher,
             #nav, #backtoblog { display: none !important; }
         </style>
         <?php

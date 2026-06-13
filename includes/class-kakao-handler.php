@@ -175,7 +175,8 @@ class KakaoHandler {
 		);
 
 		if ( is_wp_error( $result ) ) {
-			$errCode = $result->get_error_code() === 'signup_disabled' ? 'signup_disabled' : 'auth_fail';
+			$map     = array( 'signup_disabled' => 'signup_disabled', 'already_logged_in' => 'email_mismatch' );
+			$errCode = $map[ $result->get_error_code() ] ?? 'auth_fail';
 			$this->loginError( $errCode );
 			return;
 		}

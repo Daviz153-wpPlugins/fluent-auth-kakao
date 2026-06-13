@@ -190,8 +190,31 @@ docker exec wordpress-dev-wordpress-1 php -l /var/www/html/wp-content/plugins/[f
 |------|------|
 | 데드 코드 제거 | `isWpConfigMethod()` 삭제 (미사용 메서드) |
 | 전역 변수 오염 방지 | `$fakUpdater` → 메서드 체이닝으로 대체 |
-| FluentCRM `user_id` 연결 | `createOrUpdate()`에 `user_id` 필드 추가 |
-| FluentCRM 중복 체크 제거 | `getContact()` 사전 조회 제거 (upsert가 이미 처리) |
+| FluentCRM `user_id` 연결 | `createOrUpdate()`에 `user_id` 필드 추가 (신규 연락처 전용) |
+| FluentCRM 기존 연락처 보호 | `getContact()` 가드 유지 — 기존 이름·출처 덮어쓰기 방지 |
+| FluentCRM 예외 격리 | `\Throwable` catch 추가 — 선택 의존성 오류가 로그인 중단하지 않도록 |
+| `wp_unslash()` 추가 | 모든 `$_GET`·`$_POST`·`$_COOKIE` 접근에 적용 |
+| HTTP_HOST 검증 | `renderShortcode`의 `$_SERVER['HTTP_HOST']`에 `sanitize_text_field()` 추가 |
+| 정적 분석 환경 구축 | `composer.json` + `phpcs.xml` + `phpstan.neon` 추가 (phpcs WPCS + phpstan lv6) |
+
+### 정적 분석 결과 (WPCS + PHPStan)
+
+**실행 명령:**
+```bash
+./vendor/bin/phpcs                           # WP Coding Standards
+./vendor/bin/phpstan analyse --memory-limit=1G -c phpstan.neon  # 타입 분석
+```
+
+**PHPStan (level 6) 결과:** 실제 로직 버그 없음. 잔여 이슈는 런타임에만 존재하는 외부 의존성(FluentAuth, FluentCRM, WP 상수) false positive.
+
+**WPCS 잔여 이슈 (허용 결정):**
+
+| 이슈 | 허용 이유 |
+|------|-----------|
+| "Nonce 미검증" 경고 (`$_GET['code']`·`$_GET['state']`) | OAuth 콜백은 state 파라미터가 CSRF 방어 — WP nonce 불필요 |
+| `meta_key`/`meta_value` 느린 쿼리 경고 | 로그인 시에만 실행, 고빈도 쿼리 아님 |
+| 변수·메서드명 camelCase | 프로젝트 PHP 8 OOP 스타일 선택 사항 |
+| `wp_redirect()` 경고 | Kakao authorize URL은 외부 URL → `wp_safe_redirect()` 사용 불가 |
 
 ---
 

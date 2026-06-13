@@ -185,14 +185,15 @@ class KakaoHandler {
 
     private function registerToFluentCrm(int $userId, array $userInfo): void {
         if (!defined('FLUENTCRM')) return;
-
-        $contact = \FluentCrmApi('contacts')->getContact($userInfo['email']);
-        if (!$contact) {
+        try {
             \FluentCrmApi('contacts')->createOrUpdate([
                 'email'      => $userInfo['email'],
                 'first_name' => $userInfo['nickname'],
+                'user_id'    => $userId,
                 'source'     => 'kakao_login',
             ]);
+        } catch (\Throwable $e) {
+            error_log('[Fluent Auth Kakao] FluentCRM 등록 실패: ' . $e->getMessage());
         }
     }
 

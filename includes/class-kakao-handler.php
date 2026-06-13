@@ -264,8 +264,14 @@ class KakaoHandler {
 			setTimeout(function() {
 				var kakaoBtn = document.getElementById("fak_kakao_btn_wrap");
 				var loginForm = document.getElementById("loginform");
-				if (kakaoBtn && loginForm) {
-					loginForm.appendChild(kakaoBtn);
+				if (!kakaoBtn || !loginForm) return;
+				loginForm.appendChild(kakaoBtn);
+				// FluentAuth는 소셜 버튼 앞에 <hr>을 자동 추가함.
+				// hr이 없으면 카카오가 유일한 소셜 버튼 — 직접 구분선을 추가.
+				if (!loginForm.querySelector("hr")) {
+					kakaoBtn.style.borderTop = "1px solid #dcdcde";
+					kakaoBtn.style.paddingTop = "16px";
+					kakaoBtn.style.marginTop = "8px";
 				}
 			}, 0);
 		});

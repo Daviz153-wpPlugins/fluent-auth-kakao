@@ -7,10 +7,11 @@ use FluentAuth\App\Services\AuthService;
 
 class KakaoHandler {
 
-    private const STATE_KEY      = 'fak_oauth_state';
-    private const RATE_LIMIT_KEY = 'fak_rl_';
-    private const RATE_LIMIT_MAX = 10;
-    private const RATE_LIMIT_TTL = 60;
+    private const STATE_KEY         = 'fak_oauth_state';
+    private const INTENT_COOKIE_KEY = 'fak_intent_redirect';
+    private const RATE_LIMIT_KEY    = 'fak_rl_';
+    private const RATE_LIMIT_MAX    = 10;
+    private const RATE_LIMIT_TTL    = 60;
 
     private const ERROR_MESSAGES = [
         'csrf_fail'       => '보안 검증에 실패했습니다. 다시 시도해주세요.',
@@ -20,6 +21,7 @@ class KakaoHandler {
         'auth_fail'       => '로그인 처리 중 오류가 발생했습니다. 다시 시도해주세요.',
         'signup_disabled' => '신규 가입이 제한되어 있습니다. 기존 계정으로 로그인하거나 관리자에게 문의하세요.',
         'rate_limit'      => '잠시 후 다시 시도해주세요. (요청이 너무 많습니다)',
+        'email_mismatch'  => '이미 다른 계정으로 로그인되어 있습니다. 로그아웃 후 다시 시도해주세요.',
     ];
 
     public function register(): void {
@@ -42,6 +44,19 @@ class KakaoHandler {
             if ($this->isRateLimited()) {
                 $this->loginError('rate_limit');
                 return;
+            }
+
+            // OAuth 라운드트립 동안 redirect_to를 쿠키로 보존 (Google의 fs_intent_redirect와 동일)
+            $redirectTo = sanitize_url($_GET['redirect_to'] ?? '');
+            if ($redirectTo) {
+                setcookie(self::INTENT_COOKIE_KEY, $redirectTo, [
+                    'expires'  => time() + 3600,
+                    'path'     => COOKIEPATH,
+                    'domain'   => COOKIE_DOMAIN,
+                    'secure'   => is_ssl(),
+                    'httponly' => true,
+                    'samesite' => 'Lax',
+                ]);
             }
 
             $state = wp_generate_password(32, false);
@@ -87,21 +102,12 @@ class KakaoHandler {
         $kakao = new KakaoAuth();
 
         $tokenData = $kakao->getToken($code);
-        if (is_wp_error($tokenData)) {
-            $this->loginError('token_fail');
-            return;
-        }
+        if (is_wp_error($tokenData)) { $this->loginError('token_fail'); return; }
 
         $userInfo = $kakao->getUserInfo($tokenData['access_token']);
-        if (is_wp_error($userInfo)) {
-            $this->loginError('userinfo_fail');
-            return;
-        }
+        if (is_wp_error($userInfo)) { $this->loginError('userinfo_fail'); return; }
 
-        if (!method_exists(AuthService::class, 'doUserAuth')) {
-            $this->loginError('compat_fail');
-            return;
-        }
+        if (!method_exists(AuthService::class, 'doUserAuth')) { $this->loginError('compat_fail'); return; }
 
         $kakaoUsers = get_users([
             'meta_key'   => 'fak_kakao_id',
@@ -117,7 +123,24 @@ class KakaoHandler {
             $email = self::virtualEmail($userInfo['id']);
         }
 
-        $isNewUser = empty($kakaoUsers) && !get_user_by('email', $email);
+        $existingUser = !empty($kakaoUsers) ? $kakaoUsers[0] : get_user_by('email', $email);
+        $isNewUser    = !$existingUser;
+
+        // 이미 로그인된 사용자가 다른 카카오 계정으로 로그인 시도 시 차단 (Google과 동일)
+        if (is_user_logged_in() && $existingUser && $existingUser->ID !== get_current_user_id()) {
+            $this->loginError('email_mismatch');
+            return;
+        }
+
+        // 기존 사용자 2FA 게이트 (Google과 동일 — doUserAuth 전에 체크)
+        if ($existingUser && class_exists('\FluentAuth\App\Hooks\Handlers\TwoFaHandler')) {
+            $twoFaHandler = new \FluentAuth\App\Hooks\Handlers\TwoFaHandler();
+            if ($twoFaUrl = $twoFaHandler->sendAndGet2FaConfirmFormUrl($existingUser)) {
+                setcookie(self::INTENT_COOKIE_KEY, '', time() - 3600, COOKIEPATH, COOKIE_DOMAIN, is_ssl(), true);
+                wp_redirect($twoFaUrl);
+                exit;
+            }
+        }
 
         $result = AuthService::doUserAuth([
             'email'      => $email,
@@ -138,8 +161,24 @@ class KakaoHandler {
             $this->registerToFluentCrm($result->ID, $userInfo);
         }
 
-        $redirectTo = sanitize_url($_REQUEST['redirect_to'] ?? '');
-        $redirect   = apply_filters('login_redirect', $redirectTo ?: admin_url(), $redirectTo, $result);
+        // 쿠키에서 리다이렉트 목적지 읽고 즉시 삭제 (Google의 fs_intent_redirect와 동일)
+        $intentRedirectTo = sanitize_url($_COOKIE[self::INTENT_COOKIE_KEY] ?? '');
+        setcookie(self::INTENT_COOKIE_KEY, '', time() - 3600, COOKIEPATH, COOKIE_DOMAIN, is_ssl(), true);
+
+        // Google과 동일한 역할/멀티사이트 기반 기본 리다이렉트 목적지 결정
+        if (!$intentRedirectTo) {
+            if (is_multisite() && !get_active_blog_for_user($result->ID) && !is_super_admin($result->ID)) {
+                $intentRedirectTo = user_admin_url();
+            } elseif (is_multisite() && !$result->has_cap('read')) {
+                $intentRedirectTo = get_dashboard_url($result->ID);
+            } elseif (!$result->has_cap('edit_posts')) {
+                $intentRedirectTo = $result->has_cap('read') ? admin_url('profile.php') : home_url();
+            } else {
+                $intentRedirectTo = admin_url();
+            }
+        }
+
+        $redirect = apply_filters('login_redirect', $intentRedirectTo, $intentRedirectTo, $result);
         wp_safe_redirect($redirect);
         exit;
     }
@@ -161,7 +200,13 @@ class KakaoHandler {
         $kakao = new KakaoAuth();
         if (!$kakao->isConfigured()) return;
 
-        echo $this->buttonHtml(add_query_arg('fak_auth', 'kakao', wp_login_url()));
+        // Google과 동일: fluent_auth/social_redirect_to 필터 적용
+        $redirectTo = apply_filters('fluent_auth/social_redirect_to', sanitize_url($_REQUEST['redirect_to'] ?? ''));
+        $url = add_query_arg('fak_auth', 'kakao', wp_login_url());
+        if ($redirectTo) {
+            $url = add_query_arg('redirect_to', $redirectTo, $url);
+        }
+        echo $this->buttonHtml($url);
     }
 
     public function renderShortcode(array $atts): string {
@@ -172,6 +217,7 @@ class KakaoHandler {
 
         $atts       = shortcode_atts(['redirect_to' => ''], $atts, 'fak_kakao_login');
         $redirectTo = $atts['redirect_to'] ?: (is_ssl() ? 'https://' : 'http://') . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
+        $redirectTo = apply_filters('fluent_auth/social_redirect_to', $redirectTo);
 
         $loginUrl = add_query_arg([
             'fak_auth'    => 'kakao',

@@ -20,12 +20,11 @@ define('FAK_URL',     plugin_dir_url(__FILE__));
 // GitHub 자동 업데이트
 if (file_exists(FAK_DIR . 'includes/plugin-update-checker/plugin-update-checker.php')) {
     require_once FAK_DIR . 'includes/plugin-update-checker/plugin-update-checker.php';
-    $fakUpdater = YahnisElsts\PluginUpdateChecker\v5\PucFactory::buildUpdateChecker(
+    YahnisElsts\PluginUpdateChecker\v5\PucFactory::buildUpdateChecker(
         'https://github.com/Daviz153-wpPlugins/fluent-auth-kakao/',
         __FILE__,
         'fluent-auth-kakao'
-    );
-    $fakUpdater->getVcsApi()->enableReleaseAssets();
+    )->getVcsApi()->enableReleaseAssets();
 }
 
 add_action('plugins_loaded', function () {

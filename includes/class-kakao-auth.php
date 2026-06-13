@@ -27,11 +27,6 @@ class KakaoAuth {
         $this->redirectUri = wp_login_url();
     }
 
-    public static function isWpConfigMethod(): bool {
-        $s = get_option('fak_settings', []);
-        return ($s['key_method'] ?? 'db') === 'wp_config';
-    }
-
     public function isConfigured(): bool {
         return !empty($this->clientId);
     }

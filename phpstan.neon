@@ -1,0 +1,10 @@
+parameters:
+    level: 6
+    paths:
+        - includes/class-kakao-auth.php
+        - includes/class-kakao-handler.php
+        - includes/class-plugin.php
+        - includes/class-settings.php
+        - fluent-auth-kakao.php
+    bootstrapFiles:
+        - vendor/php-stubs/wordpress-stubs/wordpress-stubs.php

@@ -28,10 +28,12 @@ class Settings {
     }
 
     public function restGetSettings(): array {
-        $s = get_option(self::OPTION_KEY, []);
+        $s         = get_option(self::OPTION_KEY, []);
+        $keyMethod = $s['key_method'] ?? 'db';
         return [
-            'rest_api_key'     => $s['rest_api_key']     ?? '',
-            'client_secret'    => $s['client_secret']    ?? '',
+            'rest_api_key'     => $keyMethod === 'db' ? ($s['rest_api_key']  ?? '') : '',
+            'client_secret'    => $keyMethod === 'db' ? ($s['client_secret'] ?? '') : '',
+            'key_method'       => $keyMethod,
             'hide_email_login' => $s['hide_email_login'] ?? 'no',
             'redirect_uri'     => wp_login_url(),
         ];
@@ -44,9 +46,12 @@ class Settings {
     }
 
     private function sanitize(array $input): array {
+        $keyMethod = in_array($input['key_method'] ?? '', ['db', 'wp_config'], true)
+            ? $input['key_method'] : 'db';
         return [
-            'rest_api_key'     => sanitize_text_field($input['rest_api_key']     ?? ''),
-            'client_secret'    => sanitize_text_field($input['client_secret']    ?? ''),
+            'rest_api_key'     => sanitize_text_field($input['rest_api_key']  ?? ''),
+            'client_secret'    => sanitize_text_field($input['client_secret'] ?? ''),
+            'key_method'       => $keyMethod,
             'hide_email_login' => ($input['hide_email_login'] ?? '') === 'yes' ? 'yes' : 'no',
         ];
     }
@@ -54,7 +59,7 @@ class Settings {
     public function enqueueAdminScript(string $hook): void {
         if ($hook !== 'toplevel_page_fluent-auth') return;
 
-        wp_enqueue_script('fak-admin', FAK_URL . 'assets/js/admin.js', [], FAK_VERSION, true);
+        wp_enqueue_script('fak-admin', FAK_URL . 'assets/js/admin.js', [], FAK_VERSION . '.' . filemtime(FAK_DIR . 'assets/js/admin.js'), true);
         wp_localize_script('fak-admin', 'fakAdmin', [
             'restUrl'     => rest_url('fak/v1/settings'),
             'nonce'       => wp_create_nonce('wp_rest'),

@@ -27,6 +27,7 @@ class KakaoHandler {
         add_action('login_form',      [$this, 'renderButton']);
         add_filter('wp_login_errors', [$this, 'addLoginError']);
         add_action('login_head',      [$this, 'maybeHideEmailForm']);
+        add_shortcode('fak_kakao_login', [$this, 'renderShortcode']);
     }
 
     public function handleLoginInit(): void {
@@ -152,7 +153,28 @@ class KakaoHandler {
         $kakao = new KakaoAuth();
         if (!$kakao->isConfigured()) return;
 
-        $loginUrl = add_query_arg('fak_auth', 'kakao', wp_login_url());
+        echo $this->buttonHtml(add_query_arg('fak_auth', 'kakao', wp_login_url()));
+    }
+
+    public function renderShortcode(array $atts): string {
+        if (is_user_logged_in()) return '';
+
+        $kakao = new KakaoAuth();
+        if (!$kakao->isConfigured()) return '';
+
+        $atts      = shortcode_atts(['redirect_to' => ''], $atts, 'fak_kakao_login');
+        $redirectTo = $atts['redirect_to'] ?: (is_ssl() ? 'https://' : 'http://') . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI'];
+
+        $loginUrl = add_query_arg([
+            'fak_auth'    => 'kakao',
+            'redirect_to' => $redirectTo,
+        ], wp_login_url());
+
+        return $this->buttonHtml($loginUrl);
+    }
+
+    private function buttonHtml(string $loginUrl): string {
+        ob_start();
         ?>
         <div style="text-align:center;margin:8px 0 16px;">
             <a href="<?php echo esc_url($loginUrl); ?>"
@@ -169,6 +191,7 @@ class KakaoHandler {
             </a>
         </div>
         <?php
+        return ob_get_clean();
     }
 
     public function addLoginError(\WP_Error $errors): \WP_Error {

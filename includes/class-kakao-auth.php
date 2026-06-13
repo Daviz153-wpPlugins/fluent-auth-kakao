@@ -14,10 +14,22 @@ class KakaoAuth {
     private string $redirectUri;
 
     public function __construct() {
-        $settings          = get_option('fak_settings', []);
-        $this->clientId     = sanitize_text_field($settings['rest_api_key'] ?? '');
-        $this->clientSecret = sanitize_text_field($settings['client_secret'] ?? '');
-        $this->redirectUri  = wp_login_url();
+        $settings  = get_option('fak_settings', []);
+        $keyMethod = $settings['key_method'] ?? 'db';
+
+        if ($keyMethod === 'wp_config') {
+            $this->clientId     = defined('FAK_REST_API_KEY')  ? FAK_REST_API_KEY  : '';
+            $this->clientSecret = defined('FAK_CLIENT_SECRET') ? FAK_CLIENT_SECRET : '';
+        } else {
+            $this->clientId     = sanitize_text_field($settings['rest_api_key']  ?? '');
+            $this->clientSecret = sanitize_text_field($settings['client_secret'] ?? '');
+        }
+        $this->redirectUri = wp_login_url();
+    }
+
+    public static function isWpConfigMethod(): bool {
+        $s = get_option('fak_settings', []);
+        return ($s['key_method'] ?? 'db') === 'wp_config';
     }
 
     public function isConfigured(): bool {

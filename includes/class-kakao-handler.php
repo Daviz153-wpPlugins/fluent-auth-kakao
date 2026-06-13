@@ -158,7 +158,8 @@ class KakaoHandler {
 		// 기존 사용자 2FA 게이트 (Google과 동일 — doUserAuth 전에 체크)
 		if ( $existingUser && class_exists( '\FluentAuth\App\Hooks\Handlers\TwoFaHandler' ) ) {
 			$twoFaHandler = new \FluentAuth\App\Hooks\Handlers\TwoFaHandler();
-			if ( $twoFaUrl = $twoFaHandler->sendAndGet2FaConfirmFormUrl( $existingUser ) ) {
+			$twoFaUrl     = $twoFaHandler->sendAndGet2FaConfirmFormUrl( $existingUser );
+			if ( $twoFaUrl ) {
 				setcookie( self::INTENT_COOKIE_KEY, '', time() - 3600, COOKIEPATH, COOKIE_DOMAIN, is_ssl(), true );
 				wp_redirect( $twoFaUrl );
 				exit;
@@ -175,7 +176,10 @@ class KakaoHandler {
 		);
 
 		if ( is_wp_error( $result ) ) {
-			$map     = array( 'signup_disabled' => 'signup_disabled', 'already_logged_in' => 'email_mismatch' );
+			$map     = array(
+				'signup_disabled'   => 'signup_disabled',
+				'already_logged_in' => 'email_mismatch',
+			);
 			$errCode = $map[ $result->get_error_code() ] ?? 'auth_fail';
 			$this->loginError( $errCode );
 			return;
@@ -253,7 +257,7 @@ class KakaoHandler {
 		if ( $redirectTo ) {
 			$url = add_query_arg( 'redirect_to', $redirectTo, $url );
 		}
-		echo $this->buttonHtml( $url );
+		echo $this->buttonHtml( $url ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- buttonHtml 내부에서 esc_url() 적용
 		?>
 		<script>
 		document.addEventListener("DOMContentLoaded", function() {
@@ -280,7 +284,9 @@ class KakaoHandler {
 		}
 
 		$atts       = shortcode_atts( array( 'redirect_to' => '' ), $atts, 'fak_kakao_login' );
-		$redirectTo = $atts['redirect_to'] ?: ( is_ssl() ? 'https://' : 'http://' ) . sanitize_text_field( $_SERVER['HTTP_HOST'] ?? '' ) . $_SERVER['REQUEST_URI'];
+		$host       = sanitize_text_field( wp_unslash( $_SERVER['HTTP_HOST'] ?? '' ) );
+		$requestUri = sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ?? '/' ) );
+		$redirectTo = $atts['redirect_to'] ?: ( is_ssl() ? 'https://' : 'http://' ) . $host . $requestUri;
 		$redirectTo = apply_filters( 'fluent_auth/social_redirect_to', $redirectTo );
 
 		$loginUrl = add_query_arg(
@@ -339,7 +345,7 @@ class KakaoHandler {
 	// Cloudflare 등 리버스 프록시 뒤라면 fak/client_ip 필터로 재정의:
 	// add_filter('fak/client_ip', fn() => sanitize_text_field($_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['REMOTE_ADDR']));
 	private function getClientIp(): string {
-		$ip = sanitize_text_field( $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0' );
+		$ip = sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0' ) );
 		return (string) apply_filters( 'fak/client_ip', $ip );
 	}
 

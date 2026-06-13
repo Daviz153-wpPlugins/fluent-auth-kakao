@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  lint:
+    name: PHP 정적 분석
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PHP 8.2 설치
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: composer
+          coverage: none
+
+      - name: Composer 캐시
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: composer-${{ hashFiles('composer.json') }}
+          restore-keys: composer-
+
+      - name: 의존성 설치
+        run: composer install --no-progress --prefer-dist --no-interaction
+
+      - name: PHP 문법 검사
+        run: |
+          vendor/bin/parallel-lint \
+            --exclude vendor \
+            --exclude includes/plugin-update-checker \
+            .
+
+      - name: PHPStan 정적 분석
+        run: vendor/bin/phpstan analyse --no-progress --error-format=github
+
+      - name: PHPCS 코딩 스타일
+        run: vendor/bin/phpcs --report=full

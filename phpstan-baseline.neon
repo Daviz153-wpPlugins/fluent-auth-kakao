@@ -1,0 +1,101 @@
+parameters:
+	ignoreErrors:
+		-
+			message: "#^Call to static method buildUpdateChecker\\(\\) on an unknown class YahnisElsts\\\\PluginUpdateChecker\\\\v5\\\\PucFactory\\.$#"
+			count: 1
+			path: fluent-auth-kakao.php
+
+		-
+			message: "#^Method FluentAuthKakao\\\\KakaoAuth\\:\\:getToken\\(\\) has invalid return type FluentAuthKakao\\\\WP_Error\\.$#"
+			count: 1
+			path: includes/class-kakao-auth.php
+
+		-
+			message: "#^Method FluentAuthKakao\\\\KakaoAuth\\:\\:getToken\\(\\) return type has no value type specified in iterable type array\\.$#"
+			count: 1
+			path: includes/class-kakao-auth.php
+
+		-
+			message: "#^Method FluentAuthKakao\\\\KakaoAuth\\:\\:getUserInfo\\(\\) has invalid return type FluentAuthKakao\\\\WP_Error\\.$#"
+			count: 1
+			path: includes/class-kakao-auth.php
+
+		-
+			message: "#^Method FluentAuthKakao\\\\KakaoAuth\\:\\:getUserInfo\\(\\) return type has no value type specified in iterable type array\\.$#"
+			count: 1
+			path: includes/class-kakao-auth.php
+
+		-
+			message: "#^PHPDoc tag @return with type array\\<string, int\\|string\\>\\|FluentAuthKakao\\\\WP_Error is not subtype of native type array\\|WP_Error\\.$#"
+			count: 1
+			path: includes/class-kakao-auth.php
+
+		-
+			message: "#^PHPDoc tag @return with type array\\<string, string\\>\\|FluentAuthKakao\\\\WP_Error is not subtype of native type array\\|WP_Error\\.$#"
+			count: 1
+			path: includes/class-kakao-auth.php
+
+		-
+			message: "#^Call to function method_exists\\(\\) with 'FluentAuth\\\\\\\\App\\\\\\\\Services\\\\\\\\AuthService' and 'doUserAuth' will always evaluate to false\\.$#"
+			count: 1
+			path: includes/class-kakao-handler.php
+
+		-
+			message: "#^Class FluentAuth\\\\App\\\\Services\\\\AuthService not found\\.$#"
+			count: 1
+			path: includes/class-kakao-handler.php
+
+		-
+			message: "#^Constant COOKIEPATH not found\\.$#"
+			count: 6
+			path: includes/class-kakao-handler.php
+
+		-
+			message: "#^Constant COOKIE_DOMAIN not found\\.$#"
+			count: 6
+			path: includes/class-kakao-handler.php
+
+		-
+			message: "#^Function FluentCrmApi not found\\.$#"
+			count: 1
+			path: includes/class-kakao-handler.php
+
+		-
+			message: "#^Method FluentAuthKakao\\\\KakaoHandler\\:\\:registerToFluentCrm\\(\\) has parameter \\$userInfo with no value type specified in iterable type array\\.$#"
+			count: 1
+			path: includes/class-kakao-handler.php
+
+		-
+			message: "#^Method FluentAuthKakao\\\\KakaoHandler\\:\\:renderShortcode\\(\\) has parameter \\$atts with no value type specified in iterable type array\\.$#"
+			count: 1
+			path: includes/class-kakao-handler.php
+
+		-
+			message: "#^Constant FAK_DIR not found\\.$#"
+			count: 1
+			path: includes/class-settings.php
+
+		-
+			message: "#^Constant FAK_URL not found\\.$#"
+			count: 1
+			path: includes/class-settings.php
+
+		-
+			message: "#^Method FluentAuthKakao\\\\Settings\\:\\:restGetSettings\\(\\) return type has no value type specified in iterable type array\\.$#"
+			count: 1
+			path: includes/class-settings.php
+
+		-
+			message: "#^Method FluentAuthKakao\\\\Settings\\:\\:restSaveSettings\\(\\) return type has no value type specified in iterable type array\\.$#"
+			count: 1
+			path: includes/class-settings.php
+
+		-
+			message: "#^Method FluentAuthKakao\\\\Settings\\:\\:sanitize\\(\\) has parameter \\$input with no value type specified in iterable type array\\.$#"
+			count: 1
+			path: includes/class-settings.php
+
+		-
+			message: "#^Method FluentAuthKakao\\\\Settings\\:\\:sanitize\\(\\) return type has no value type specified in iterable type array\\.$#"
+			count: 1
+			path: includes/class-settings.php

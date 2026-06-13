@@ -28,6 +28,7 @@ Thumbs.db
 # 개인 개발 문서 (로컬 전용)
 CLAUDE.md
 RETROSPECTIVE.md
+PROJECT.md
 
 # 테스트/자동화 도구
 .playwright-mcp/

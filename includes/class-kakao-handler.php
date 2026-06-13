@@ -94,6 +94,9 @@ class KakaoHandler {
 			return;
 		}
 
+		// 카카오 콜백으로 확정 — CSRF 성공·실패와 무관하게 FluentAuth(priority 1) 간섭을 차단
+		unset( $_GET['code'], $_GET['state'], $_REQUEST['code'], $_REQUEST['state'] );
+
 		if ( ! hash_equals( $cookieState, $state ) ) {
 			$this->loginError( 'csrf_fail' );
 			return;
@@ -106,9 +109,6 @@ class KakaoHandler {
 		}
 		delete_transient( $transientKey );
 		setcookie( self::STATE_KEY, '', time() - 3600, COOKIEPATH, COOKIE_DOMAIN, is_ssl(), true );
-
-		// 카카오 콜백으로 확정 — FluentAuth(priority 1)가 동일한 code/state로 Google 인증을 시도하지 못하게 제거
-		unset( $_GET['code'], $_GET['state'], $_REQUEST['code'], $_REQUEST['state'] );
 
 		$this->processCallback( $code );
 	}
@@ -268,10 +268,21 @@ class KakaoHandler {
 				var kakaoBtn = document.getElementById("fak_kakao_btn_wrap");
 				var loginForm = document.getElementById("loginform");
 				if (!kakaoBtn || !loginForm) return;
-				loginForm.appendChild(kakaoBtn);
-				// FluentAuth는 소셜 버튼에 .fm_login_with { border-top } CSS를 사용.
-				// 다른 소셜 버튼(.fs_auth_btn)이 없을 때만 카카오 위에 구분선을 추가.
-				if (!loginForm.querySelector(".fs_auth_btn")) {
+
+				// 카카오 링크가 loginform 안에 있을 때 FluentAuth의 폼 클릭 핸들러가
+				// HTML5 validation을 실행하는 것을 stopPropagation으로 차단.
+				var kakaoLink = kakaoBtn.querySelector("a");
+				if (kakaoLink) {
+					kakaoLink.addEventListener("click", function(e) { e.stopPropagation(); });
+				}
+
+				var googleBtn = document.querySelector(".fs_auth_btn");
+				if (googleBtn) {
+					// Google 버튼 바로 다음에 삽입 (폼 안팎 불문, Google 아래 유지)
+					googleBtn.insertAdjacentElement("afterend", kakaoBtn);
+				} else {
+					// Kakao 단독: 폼 밖에 배치해 폼 이벤트 간섭 완전 차단 + 구분선 추가
+					loginForm.insertAdjacentElement("afterend", kakaoBtn);
 					kakaoBtn.style.borderTop = "1px solid #dcdcde";
 					kakaoBtn.style.paddingTop = "16px";
 					kakaoBtn.style.marginTop = "8px";

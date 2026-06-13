@@ -111,13 +111,11 @@ class KakaoHandler {
 
         $isNewUser = empty($kakaoUsers) && !get_user_by('email', $email);
 
-        add_filter('fluent_auth/signup_enabled', '__return_true');
         $result = AuthService::doUserAuth([
             'email'      => $email,
             'first_name' => $userInfo['nickname'],
             'username'   => 'kakao_' . $userInfo['id'],
         ], 'kakao');
-        remove_filter('fluent_auth/signup_enabled', '__return_true');
 
         if (is_wp_error($result)) {
             $this->loginError('auth_fail');

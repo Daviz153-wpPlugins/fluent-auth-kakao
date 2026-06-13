@@ -107,6 +107,9 @@ class KakaoHandler {
 		delete_transient( $transientKey );
 		setcookie( self::STATE_KEY, '', time() - 3600, COOKIEPATH, COOKIE_DOMAIN, is_ssl(), true );
 
+		// 카카오 콜백으로 확정 — FluentAuth(priority 1)가 동일한 code/state로 Google 인증을 시도하지 못하게 제거
+		unset( $_GET['code'], $_GET['state'], $_REQUEST['code'], $_REQUEST['state'] );
+
 		$this->processCallback( $code );
 	}
 
@@ -266,9 +269,9 @@ class KakaoHandler {
 				var loginForm = document.getElementById("loginform");
 				if (!kakaoBtn || !loginForm) return;
 				loginForm.appendChild(kakaoBtn);
-				// FluentAuth는 소셜 버튼 앞에 <hr>을 자동 추가함.
-				// hr이 없으면 카카오가 유일한 소셜 버튼 — 직접 구분선을 추가.
-				if (!loginForm.querySelector("hr")) {
+				// FluentAuth는 소셜 버튼에 .fm_login_with { border-top } CSS를 사용.
+				// 다른 소셜 버튼(.fs_auth_btn)이 없을 때만 카카오 위에 구분선을 추가.
+				if (!loginForm.querySelector(".fs_auth_btn")) {
 					kakaoBtn.style.borderTop = "1px solid #dcdcde";
 					kakaoBtn.style.paddingTop = "16px";
 					kakaoBtn.style.marginTop = "8px";

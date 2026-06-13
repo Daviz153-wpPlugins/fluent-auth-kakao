@@ -16,9 +16,10 @@ class KakaoHandler {
         'csrf_fail'     => '보안 검증에 실패했습니다. 다시 시도해주세요.',
         'token_fail'    => '카카오 인증에 실패했습니다. 다시 시도해주세요.',
         'userinfo_fail' => '카카오 사용자 정보를 가져올 수 없습니다. 다시 시도해주세요.',
-        'compat_fail'   => 'FluentAuth 버전이 호환되지 않습니다. 플러그인을 업데이트해주세요.',
-        'auth_fail'     => '로그인 처리 중 오류가 발생했습니다. 다시 시도해주세요.',
-        'rate_limit'    => '잠시 후 다시 시도해주세요. (요청이 너무 많습니다)',
+        'compat_fail'    => 'FluentAuth 버전이 호환되지 않습니다. 플러그인을 업데이트해주세요.',
+        'auth_fail'      => '로그인 처리 중 오류가 발생했습니다. 다시 시도해주세요.',
+        'signup_disabled' => '신규 가입이 제한되어 있습니다. 기존 계정으로 로그인하거나 관리자에게 문의하세요.',
+        'rate_limit'     => '잠시 후 다시 시도해주세요. (요청이 너무 많습니다)',
     ];
 
     public function register(): void {
@@ -118,7 +119,8 @@ class KakaoHandler {
         ], 'kakao');
 
         if (is_wp_error($result)) {
-            $this->loginError('auth_fail');
+            $code = $result->get_error_code() === 'signup_disabled' ? 'signup_disabled' : 'auth_fail';
+            $this->loginError($code);
         }
 
         update_user_meta($result->ID, 'fak_kakao_id', $userInfo['id']);

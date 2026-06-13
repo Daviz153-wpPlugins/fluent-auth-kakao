@@ -389,6 +389,10 @@ class KakaoHandler {
 			#loginform p.submit,
 			.language-switcher,
 			#nav, #backtoblog { display: none !important; }
+			/* 이메일 폼 숨김 시: 빈 폼 박스 중화(소셜 버튼은 폼 안에 있을 수 있어 display:none 불가), 구분선 제거 */
+			#loginform { background: none !important; border: none !important; box-shadow: none !important; padding: 0 !important; margin: 0 !important; }
+			.fm_login_with { border-top: none !important; }
+			#fak_kakao_btn_wrap { border-top: none !important; padding-top: 0 !important; margin-top: 0 !important; }
 		</style>
 		<?php
 	}

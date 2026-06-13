@@ -81,7 +81,7 @@ class KakaoHandler {
 			exit;
 		}
 
-		$code  = sanitize_text_field( wp_unslash( $_GET['code']  ?? '' ) );
+		$code  = sanitize_text_field( wp_unslash( $_GET['code'] ?? '' ) );
 		$state = sanitize_text_field( wp_unslash( $_GET['state'] ?? '' ) );
 
 		if ( ! $code || ! $state ) {

@@ -170,20 +170,28 @@ docker exec wordpress-dev-wordpress-1 php -l /var/www/html/wp-content/plugins/[f
 |------|-----------|
 | CSRF 방지 (state transient + 쿠키 이중 검증) | `handleLoginInit()` |
 | state 일회성 사용 (검증 즉시 transient 삭제) | `handleLoginInit()` |
-| Rate limit (IP별 60초 10회) | `isRateLimited()` |
+| Rate limit — REMOTE_ADDR 전용 (HTTP 헤더 스푸핑 방지) | `isRateLimited()` + `getClientIp()` |
+| `wp_remote_post` 타임아웃 15초 명시 | `getToken()`, `getUserInfo()` |
+| Kakao API `id` — `(int)` 캐스트 + `empty()` 체크 | `getUserInfo()` |
+| `wp_safe_redirect` — 외부 도메인·`//evil.com` 차단 확인 | `processCallback()` |
+| `virtualEmail` 충돌 확률 96비트, 100만 사용자 기준 ~10⁻¹⁷ (허용) | `virtualEmail()` |
 | 모든 API 응답 `sanitize_*()` 처리 | `class-kakao-auth.php` |
 | 모든 출력 `esc_*()` 처리 | `buttonHtml()` |
 | API 키 DB 저장 (하드코딩 금지) | `class-settings.php` |
-| `manage_options` 권한 체크 | `class-settings.php` |
+| `manage_options` 권한 체크 + wp_config 방식 키 REST 미노출 | `class-settings.php` |
 | 로그인 사용자 계정 불일치 차단 | `processCallback()` |
 | 2FA 게이트 (기존 사용자) | `processCallback()` |
 | Lax SameSite + httponly 쿠키 | `handleLoginInit()` |
+| FluentCRM 예외 격리 — 선택 의존성 예외가 로그인 중단하지 않도록 | `registerToFluentCrm()` |
 
-### 잔여 보안 검토 항목
+### 코딩 품질 개선 완료
 
-- [ ] Kakao API 응답에서 `id` 필드 타입 검증 (int 보장)
-- [ ] `wp_safe_redirect` 화이트리스트 검토 (외부 도메인 리다이렉트 차단 확인)
-- [ ] `virtualEmail` 충돌 가능성 — `wp_hash` 24자리 충돌 확률 허용 수준인지 확인
+| 항목 | 내용 |
+|------|------|
+| 데드 코드 제거 | `isWpConfigMethod()` 삭제 (미사용 메서드) |
+| 전역 변수 오염 방지 | `$fakUpdater` → 메서드 체이닝으로 대체 |
+| FluentCRM `user_id` 연결 | `createOrUpdate()`에 `user_id` 필드 추가 |
+| FluentCRM 중복 체크 제거 | `getContact()` 사전 조회 제거 (upsert가 이미 처리) |
 
 ---
 

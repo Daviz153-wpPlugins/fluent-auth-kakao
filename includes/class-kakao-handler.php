@@ -94,7 +94,10 @@ class KakaoHandler {
 			return;
 		}
 
-		// 카카오 콜백으로 확정 — CSRF 성공·실패와 무관하게 FluentAuth(priority 1) 간섭을 차단
+		// 카카오 콜백으로 확정 — FluentAuth SocialAuthHandler(priority 1)는 $_GET['code']+$_GET['state']
+		// 존재 여부만으로 Google 콜백으로 판단(SocialAuthHandler.php:33-36, $_GET 직접 참조).
+		// 이를 차단하기 위해 unset. filter_input()을 쓰지 않으므로 이 방식이 유효하게 작동함.
+		// 근본 해결책: redirect_uri를 REST 엔드포인트로 분리하는 아키텍처 변경.
 		unset( $_GET['code'], $_GET['state'], $_REQUEST['code'], $_REQUEST['state'] );
 
 		if ( ! hash_equals( $cookieState, $state ) ) {
@@ -161,7 +164,13 @@ class KakaoHandler {
 		// 기존 사용자 2FA 게이트 (Google과 동일 — doUserAuth 전에 체크)
 		if ( $existingUser && class_exists( '\FluentAuth\App\Hooks\Handlers\TwoFaHandler' ) ) {
 			$twoFaHandler = new \FluentAuth\App\Hooks\Handlers\TwoFaHandler();
-			$twoFaUrl     = $twoFaHandler->sendAndGet2FaConfirmFormUrl( $existingUser );
+			// method_exists 체크: FluentAuth 내부 API 변경 시 2FA 없이 로그인 허용(fail-open)보다
+			// 명시적 compat_fail 오류가 나을 수 있으나 Google과 동일한 fail-open 방침 유지
+			if ( ! method_exists( $twoFaHandler, 'sendAndGet2FaConfirmFormUrl' ) ) {
+				$this->loginError( 'compat_fail' );
+				return;
+			}
+			$twoFaUrl = $twoFaHandler->sendAndGet2FaConfirmFormUrl( $existingUser );
 			if ( $twoFaUrl ) {
 				// 2FA 리다이렉트 전에 메타 기록 (2FA 완료 후 doUserAuth로 돌아오지 않으므로)
 				update_user_meta( $existingUser->ID, 'fak_kakao_id', $userInfo['id'] );
@@ -399,6 +408,6 @@ class KakaoHandler {
 	}
 
 	private static function virtualEmail( int $kakaoId ): string {
-		return 'k' . substr( wp_hash( (string) $kakaoId ), 0, 24 ) . '@kakao.user';
+		return 'kakao_' . $kakaoId . '@kakao.user';
 	}
 }

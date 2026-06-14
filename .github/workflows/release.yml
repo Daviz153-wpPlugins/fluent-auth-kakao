@@ -23,6 +23,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag || github.ref }}
+          submodules: true
 
       - uses: shivammathur/setup-php@v2
         with:
@@ -34,10 +35,10 @@ jobs:
 
       - name: Build release ZIP
         run: |
-          mkdir -p dist/fluent-auth-kakao/includes
+          mkdir -p dist/fluent-auth-kakao
           cp fluent-auth-kakao.php uninstall.php dist/fluent-auth-kakao/
-          cp -r includes/ dist/fluent-auth-kakao/includes/
-          cp -r assets/ dist/fluent-auth-kakao/assets/
+          cp -r includes dist/fluent-auth-kakao/
+          cp -r assets dist/fluent-auth-kakao/
           cd dist && zip -r ../fluent-auth-kakao.zip fluent-auth-kakao/
 
       - name: Create or update GitHub Release

@@ -30,6 +30,7 @@ class KakaoHandler {
 		add_action( 'login_form', array( $this, 'renderButton' ), 20 );
 		add_filter( 'login_form_bottom', array( $this, 'appendToLoginFormBottom' ) );
 		add_action( 'login_head', array( $this, 'maybeHideEmailForm' ) );
+		add_action( 'wp_head', array( $this, 'maybeHideEmailForm' ) );
 		add_shortcode( 'fak_kakao_login', array( $this, 'renderShortcode' ) );
 	}
 

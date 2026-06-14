@@ -27,7 +27,7 @@ class KakaoHandler {
 	public function register(): void {
 		// priority 0: FluentAuth SocialAuthHandler(priority 1)이 Google ?code&state를 가로채기 전에 실행
 		add_action( 'login_init', array( $this, 'handleLoginInit' ), 0 );
-		add_action( 'login_form', array( $this, 'renderButton' ) );
+		add_action( 'login_form', array( $this, 'renderButton' ), 20 );
 		add_action( 'login_head', array( $this, 'maybeHideEmailForm' ) );
 		add_shortcode( 'fak_kakao_login', array( $this, 'renderShortcode' ) );
 	}
@@ -94,6 +94,9 @@ class KakaoHandler {
 			return;
 		}
 
+		// 카카오 콜백으로 확정 — CSRF 성공·실패와 무관하게 FluentAuth(priority 1) 간섭을 차단
+		unset( $_GET['code'], $_GET['state'], $_REQUEST['code'], $_REQUEST['state'] );
+
 		if ( ! hash_equals( $cookieState, $state ) ) {
 			$this->loginError( 'csrf_fail' );
 			return;
@@ -158,7 +161,10 @@ class KakaoHandler {
 		// 기존 사용자 2FA 게이트 (Google과 동일 — doUserAuth 전에 체크)
 		if ( $existingUser && class_exists( '\FluentAuth\App\Hooks\Handlers\TwoFaHandler' ) ) {
 			$twoFaHandler = new \FluentAuth\App\Hooks\Handlers\TwoFaHandler();
-			if ( $twoFaUrl = $twoFaHandler->sendAndGet2FaConfirmFormUrl( $existingUser ) ) {
+			$twoFaUrl     = $twoFaHandler->sendAndGet2FaConfirmFormUrl( $existingUser );
+			if ( $twoFaUrl ) {
+				// 2FA 리다이렉트 전에 메타 기록 (2FA 완료 후 doUserAuth로 돌아오지 않으므로)
+				update_user_meta( $existingUser->ID, 'fak_kakao_id', $userInfo['id'] );
 				setcookie( self::INTENT_COOKIE_KEY, '', time() - 3600, COOKIEPATH, COOKIE_DOMAIN, is_ssl(), true );
 				wp_redirect( $twoFaUrl );
 				exit;
@@ -175,7 +181,10 @@ class KakaoHandler {
 		);
 
 		if ( is_wp_error( $result ) ) {
-			$map     = array( 'signup_disabled' => 'signup_disabled', 'already_logged_in' => 'email_mismatch' );
+			$map     = array(
+				'signup_disabled'   => 'signup_disabled',
+				'already_logged_in' => 'email_mismatch',
+			);
 			$errCode = $map[ $result->get_error_code() ] ?? 'auth_fail';
 			$this->loginError( $errCode );
 			return;
@@ -205,7 +214,14 @@ class KakaoHandler {
 			}
 		}
 
-		$redirect = apply_filters( 'login_redirect', $intentRedirectTo, $intentRedirectTo, $result );
+		// '' 전달 → FluentAuth 리다이렉트 설정 우선 적용, WooCommerce 등 서드파티 훅 간섭 방지
+		// FluentAuth의 MagicLoginHandler가 wp-login.php?redirect_to= 를 보는 즉시 _fls_redirect_to 쿠키를 세팅.
+		// 카카오 OAuth 라운드트립 후에도 남아 FluentAuth의 설정 리다이렉트를 무시하므로 먼저 제거.
+		unset( $_COOKIE['_fls_redirect_to'] );
+		setcookie( '_fls_redirect_to', '', time() - 3600, COOKIEPATH, COOKIE_DOMAIN );
+
+		// '' 전달 → FluentAuth 리다이렉트 설정 우선 적용
+		$redirect = apply_filters( 'login_redirect', $intentRedirectTo, '', $result );
 		wp_safe_redirect( $redirect );
 		exit;
 	}
@@ -245,7 +261,37 @@ class KakaoHandler {
 		if ( $redirectTo ) {
 			$url = add_query_arg( 'redirect_to', $redirectTo, $url );
 		}
-		echo $this->buttonHtml( $url );
+		echo $this->buttonHtml( $url ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- buttonHtml 내부에서 esc_url() 적용
+		?>
+		<script>
+		document.addEventListener("DOMContentLoaded", function() {
+			setTimeout(function() {
+				var kakaoBtn = document.getElementById("fak_kakao_btn_wrap");
+				var loginForm = document.getElementById("loginform");
+				if (!kakaoBtn || !loginForm) return;
+
+				// 카카오 링크가 loginform 안에 있을 때 FluentAuth의 폼 클릭 핸들러가
+				// HTML5 validation을 실행하는 것을 stopPropagation으로 차단.
+				var kakaoLink = kakaoBtn.querySelector("a");
+				if (kakaoLink) {
+					kakaoLink.addEventListener("click", function(e) { e.stopPropagation(); });
+				}
+
+				var googleBtn = document.querySelector(".fs_auth_btn");
+				if (googleBtn) {
+					// Google 버튼 바로 다음에 삽입 (폼 안팎 불문, Google 아래 유지)
+					googleBtn.insertAdjacentElement("afterend", kakaoBtn);
+				} else {
+					// Kakao 단독: 폼 밖에 배치해 폼 이벤트 간섭 완전 차단 + 구분선 추가
+					loginForm.insertAdjacentElement("afterend", kakaoBtn);
+					kakaoBtn.style.borderTop = "1px solid #dcdcde";
+					kakaoBtn.style.paddingTop = "16px";
+					kakaoBtn.style.marginTop = "8px";
+				}
+			}, 0);
+		});
+		</script>
+		<?php
 	}
 
 	public function renderShortcode( array $atts ): string {
@@ -259,7 +305,9 @@ class KakaoHandler {
 		}
 
 		$atts       = shortcode_atts( array( 'redirect_to' => '' ), $atts, 'fak_kakao_login' );
-		$redirectTo = $atts['redirect_to'] ?: ( is_ssl() ? 'https://' : 'http://' ) . sanitize_text_field( $_SERVER['HTTP_HOST'] ?? '' ) . $_SERVER['REQUEST_URI'];
+		$host       = sanitize_text_field( wp_unslash( $_SERVER['HTTP_HOST'] ?? '' ) );
+		$requestUri = sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ?? '/' ) );
+		$redirectTo = $atts['redirect_to'] ?: ( is_ssl() ? 'https://' : 'http://' ) . $host . $requestUri;
 		$redirectTo = apply_filters( 'fluent_auth/social_redirect_to', $redirectTo );
 
 		$loginUrl = add_query_arg(
@@ -276,7 +324,7 @@ class KakaoHandler {
 	private function buttonHtml( string $loginUrl ): string {
 		ob_start();
 		?>
-		<div style="text-align:center;margin:8px 0 16px;">
+		<div id="fak_kakao_btn_wrap" style="text-align:center;margin:8px 0 16px;">
 			<a href="<?php echo esc_url( $loginUrl ); ?>"
 				style="display:inline-flex;align-items:center;justify-content:center;gap:8px;
 						width:100%;padding:10px 16px;background:#FEE500;color:#000000;
@@ -318,7 +366,7 @@ class KakaoHandler {
 	// Cloudflare 등 리버스 프록시 뒤라면 fak/client_ip 필터로 재정의:
 	// add_filter('fak/client_ip', fn() => sanitize_text_field($_SERVER['HTTP_CF_CONNECTING_IP'] ?? $_SERVER['REMOTE_ADDR']));
 	private function getClientIp(): string {
-		$ip = sanitize_text_field( $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0' );
+		$ip = sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0' ) );
 		return (string) apply_filters( 'fak/client_ip', $ip );
 	}
 
@@ -342,6 +390,10 @@ class KakaoHandler {
 			#loginform p.submit,
 			.language-switcher,
 			#nav, #backtoblog { display: none !important; }
+			/* 이메일 폼 숨김 시: 빈 폼 박스 중화(소셜 버튼은 폼 안에 있을 수 있어 display:none 불가), 구분선 제거 */
+			#loginform { background: none !important; border: none !important; box-shadow: none !important; padding: 0 !important; margin: 0 !important; }
+			.fm_login_with { border-top: none !important; }
+			#fak_kakao_btn_wrap { border-top: none !important; padding-top: 0 !important; margin-top: 0 !important; }
 		</style>
 		<?php
 	}

@@ -14,11 +14,11 @@ class KakaoAuth {
 	private string $redirectUri;
 
 	public function __construct() {
-		$settings  = get_option( 'fak_settings', array() );
-		$keyMethod = $settings['key_method'] ?? 'db';
+		$settings = get_option( 'fak_settings', array() );
 
-		if ( $keyMethod === 'wp_config' ) {
-			$this->clientId     = defined( 'FAK_REST_API_KEY' ) ? FAK_REST_API_KEY : '';
+		// 상수가 정의되어 있으면 key_method 설정에 관계없이 우선 사용
+		if ( defined( 'FAK_REST_API_KEY' ) && FAK_REST_API_KEY ) {
+			$this->clientId     = FAK_REST_API_KEY;
 			$this->clientSecret = defined( 'FAK_CLIENT_SECRET' ) ? FAK_CLIENT_SECRET : '';
 		} else {
 			$this->clientId     = sanitize_text_field( $settings['rest_api_key'] ?? '' );

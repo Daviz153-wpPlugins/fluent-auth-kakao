@@ -28,6 +28,7 @@ class KakaoHandler {
 		// priority 0: FluentAuth SocialAuthHandler(priority 1)이 Google ?code&state를 가로채기 전에 실행
 		add_action( 'login_init', array( $this, 'handleLoginInit' ), 0 );
 		add_action( 'login_form', array( $this, 'renderButton' ), 20 );
+		add_filter( 'login_form_bottom', array( $this, 'appendToLoginFormBottom' ) );
 		add_action( 'login_head', array( $this, 'maybeHideEmailForm' ) );
 		add_shortcode( 'fak_kakao_login', array( $this, 'renderShortcode' ) );
 	}
@@ -301,6 +302,13 @@ class KakaoHandler {
 		});
 		</script>
 		<?php
+	}
+
+	// [fluent_auth_login] 단축코드: login_form 액션 대신 login_form_bottom 필터를 사용하므로 별도 핸들 필요
+	public function appendToLoginFormBottom( string $html ): string {
+		ob_start();
+		$this->renderButton();
+		return $html . ob_get_clean();
 	}
 
 	public function renderShortcode( array $atts ): string {

@@ -400,12 +400,15 @@ class KakaoHandler {
 		?>
 		<style>
 			/* WordPress 6.x: p.login-username → <p>(no class), p.login-password → div.user-pass-wrap */
+			/* FluentAuth 단축코드 폼: p.forgetmenot → p.login-remember, p.submit → p.login-submit */
 			#loginform p:has(#user_login),
 			#loginform p.login-username,
 			#loginform .user-pass-wrap,
 			#loginform p.login-password,
 			#loginform .forgetmenot,
-			#loginform p.submit { display: none !important; }
+			#loginform p.login-remember,
+			#loginform p.submit,
+			#loginform p.login-submit { display: none !important; }
 			<?php if ( current_action() === 'login_head' ) : ?>
 			/* wp-login.php 전용 크롬 요소 — 프론트엔드 wp_head에서는 제외해 사이트 내비 숨김 방지 */
 			.language-switcher, #nav, #backtoblog { display: none !important; }

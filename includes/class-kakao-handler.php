@@ -405,9 +405,11 @@ class KakaoHandler {
 			#loginform .user-pass-wrap,
 			#loginform p.login-password,
 			#loginform .forgetmenot,
-			#loginform p.submit,
-			.language-switcher,
-			#nav, #backtoblog { display: none !important; }
+			#loginform p.submit { display: none !important; }
+			<?php if ( current_action() === 'login_head' ) : ?>
+			/* wp-login.php 전용 크롬 요소 — 프론트엔드 wp_head에서는 제외해 사이트 내비 숨김 방지 */
+			.language-switcher, #nav, #backtoblog { display: none !important; }
+			<?php endif; ?>
 			/* 이메일 폼 숨김 시: 빈 폼 박스 중화(소셜 버튼은 폼 안에 있을 수 있어 display:none 불가), 구분선 제거 */
 			#loginform { background: none !important; border: none !important; box-shadow: none !important; padding: 0 !important; margin: 0 !important; }
 			.fm_login_with { border-top: none !important; }

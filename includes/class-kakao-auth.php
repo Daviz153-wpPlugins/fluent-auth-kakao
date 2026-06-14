@@ -108,10 +108,6 @@ class KakaoAuth {
 		$email    = sanitize_email( $account['email'] ?? '' );
 		$nickname = sanitize_text_field( $profile['nickname'] ?? '' );
 
-		if ( ! $email ) {
-			$email = '';
-		}
-
 		// 둘 다 true여야 소유 검증 완료 — 미검증 이메일로 기존 계정 탈취 방지
 		$emailVerified = ! empty( $account['is_email_valid'] ) && ! empty( $account['is_email_verified'] );
 

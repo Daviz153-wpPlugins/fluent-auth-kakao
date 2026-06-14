@@ -163,6 +163,8 @@ class KakaoHandler {
 			$twoFaHandler = new \FluentAuth\App\Hooks\Handlers\TwoFaHandler();
 			$twoFaUrl     = $twoFaHandler->sendAndGet2FaConfirmFormUrl( $existingUser );
 			if ( $twoFaUrl ) {
+				// 2FA 리다이렉트 전에 메타 기록 (2FA 완료 후 doUserAuth로 돌아오지 않으므로)
+				update_user_meta( $existingUser->ID, 'fak_kakao_id', $userInfo['id'] );
 				setcookie( self::INTENT_COOKIE_KEY, '', time() - 3600, COOKIEPATH, COOKIE_DOMAIN, is_ssl(), true );
 				wp_redirect( $twoFaUrl );
 				exit;
@@ -197,7 +199,6 @@ class KakaoHandler {
 
 		// 쿠키에서 리다이렉트 목적지 읽고 즉시 삭제 (Google의 fs_intent_redirect와 동일)
 		$intentRedirectTo = sanitize_url( wp_unslash( $_COOKIE[ self::INTENT_COOKIE_KEY ] ?? '' ) );
-		$fromCookie       = (bool) $intentRedirectTo;
 		setcookie( self::INTENT_COOKIE_KEY, '', time() - 3600, COOKIEPATH, COOKIE_DOMAIN, is_ssl(), true );
 
 		// Google과 동일한 역할/멀티사이트 기반 기본 리다이렉트 목적지 결정

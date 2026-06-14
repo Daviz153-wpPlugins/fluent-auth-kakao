@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (e.g. v0.1.8)'
+        required: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          tools: composer
+
+      - name: Install production dependencies
+        run: composer install --no-dev --no-interaction --prefer-dist
+
+      - name: Build release ZIP
+        run: |
+          mkdir -p dist/fluent-auth-kakao/includes
+          cp fluent-auth-kakao.php uninstall.php dist/fluent-auth-kakao/
+          cp -r includes/ dist/fluent-auth-kakao/includes/
+          cp -r assets/ dist/fluent-auth-kakao/assets/
+          cd dist && zip -r ../fluent-auth-kakao.zip fluent-auth-kakao/
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          if gh release view "$RELEASE_TAG" &>/dev/null; then
+            gh release upload "$RELEASE_TAG" fluent-auth-kakao.zip --clobber
+          else
+            gh release create "$RELEASE_TAG" fluent-auth-kakao.zip \
+              --title "Fluent Auth Kakao $RELEASE_TAG" \
+              --generate-notes
+          fi
